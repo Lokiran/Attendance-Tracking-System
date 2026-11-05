@@ -1,4 +1,4 @@
-"""Backfill users.graph_user_id / users.wifi_identity from a CSV (dry run unless --apply).
+r"""Backfill users.graph_user_id / users.wifi_identity from a CSV (dry run unless --apply).
 
 Usage (PowerShell, from the repo root):
     $env:ATS_ENV_FILE = ".env.sqlite"          # or leave unset for backend\.env (PostgreSQL)

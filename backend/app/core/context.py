@@ -7,5 +7,3 @@ class RequestContext:
     ip_address: str | None = None
     user_agent: str | None = None
 
-
-SYSTEM_CONTEXT = RequestContext(request_id="system")

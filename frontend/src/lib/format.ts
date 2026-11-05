@@ -46,10 +46,6 @@ export function formatDate(d: string | null | undefined, opts: Intl.DateTimeForm
   }).format(new Date(Date.UTC(y, m - 1, day)));
 }
 
-export function weekdayShort(d: string): string {
-  return formatDate(d, { weekday: "short", day: undefined, month: undefined, year: undefined });
-}
-
 /** 485 -> "8h 05m" */
 export function formatMinutes(min: number | null | undefined): string {
   if (min === null || min === undefined) return "—";
@@ -98,13 +94,4 @@ export function titleCase(s: string): string {
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
-}
-
-export function initials(name: string): string {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join("");
 }

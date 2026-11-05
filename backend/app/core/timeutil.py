@@ -11,10 +11,6 @@ def office_tz() -> ZoneInfo:
     return get_settings().tz
 
 
-def to_local(dt: datetime, tz: ZoneInfo | None = None) -> datetime:
-    return dt.astimezone(tz or office_tz())
-
-
 def local_date(dt: datetime, tz: ZoneInfo | None = None) -> date:
     """Office-local calendar date of an aware timestamp (the workday a session belongs to)."""
     return dt.astimezone(tz or office_tz()).date()
@@ -40,9 +36,3 @@ def local_day_bounds(start: date, end: date | None = None, tz: ZoneInfo | None =
 def today_local(tz: ZoneInfo | None = None) -> date:
     return local_date(clock.utcnow(), tz)
 
-
-def iter_dates(start: date, end: date):
-    d = start
-    while d <= end:
-        yield d
-        d += timedelta(days=1)

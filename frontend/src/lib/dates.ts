@@ -48,10 +48,6 @@ export function minDate(a: string, b: string): string {
   return a < b ? a : b;
 }
 
-export function daysBetween(a: string, b: string): number {
-  return Math.round((toUtc(b).getTime() - toUtc(a).getTime()) / 86_400_000);
-}
-
 /** ISO weekday 1 (Mon) .. 7 (Sun) */
 export function isoWeekday(d: string): number {
   const w = toUtc(d).getUTCDay();
