@@ -55,7 +55,7 @@ export function DataTable<T>({
       <table className="w-full min-w-[640px] border-collapse text-sm">
         {caption && <caption className="sr-only">{caption}</caption>}
         <thead>
-          <tr className="border-b border-line text-left text-xs text-ink-3">
+          <tr className="border-b border-line bg-secondary-soft text-left text-xs text-ink-2">
             {columns.map((c) => {
               const active = sort?.sort === c.key;
               const ariaSort = active ? (sort?.order === "asc" ? "ascending" : "descending") : undefined;

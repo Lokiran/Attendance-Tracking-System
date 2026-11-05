@@ -100,13 +100,13 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
   return (
     <nav aria-label="Main" className="flex h-full flex-col gap-5 overflow-y-auto px-3 py-4">
       <div className={clsx("flex items-center gap-2 px-2", collapsed && "justify-center px-0")}>
-        <span className="inline-flex size-8 items-center justify-center rounded-lg bg-[#2563eb] text-white" aria-hidden>
+        <span className="inline-flex size-8 items-center justify-center rounded-lg bg-brand text-on-brand" aria-hidden>
           <CalendarCheck className="size-4" />
         </span>
         {!collapsed && (
           <div className="leading-tight">
-            <div className="text-sm font-semibold text-sidebar-active-ink">Nexa Attendance</div>
-            <div className="text-[11px] text-sidebar-muted">Nexa Technologies</div>
+            <div className="text-sm font-semibold text-on-secondary">Nexa Attendance</div>
+            <div className="text-[11px] text-on-secondary-muted">Nexa Technologies</div>
           </div>
         )}
       </div>
@@ -115,7 +115,7 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
         if (!items.length) return null;
         return (
           <div key={section.title}>
-            {!collapsed && <div className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">{section.title}</div>}
+            {!collapsed && <div className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-on-secondary-muted">{section.title}</div>}
             <ul className="space-y-0.5">
               {items.map((item) => (
                 <li key={item.to}>
@@ -126,15 +126,15 @@ function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
                     title={collapsed ? item.label : undefined}
                     className={({ isActive }) =>
                       clsx(
-                        "group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
+                        "group relative flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
                         collapsed && "justify-center",
                         isActive
-                          ? "active bg-sidebar-active font-medium text-sidebar-active-ink"
-                          : "text-sidebar-ink hover:bg-sidebar-hover hover:text-sidebar-active-ink",
+                          ? "active bg-brand font-medium text-on-brand shadow-sm"
+                          : "text-on-secondary-muted hover:bg-secondary-raised hover:text-on-secondary",
                       )
                     }
                   >
-                    <item.icon className="size-4 shrink-0 text-sidebar-muted group-[.active]:text-sidebar-icon-active" aria-hidden />
+                    <item.icon className="size-4 shrink-0 text-on-secondary-muted group-[.active]:text-on-brand" aria-hidden />
                     {collapsed ? <span className="sr-only">{item.label}</span> : item.label}
                   </NavLink>
                 </li>
@@ -171,12 +171,12 @@ function ProfileMenu() {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-surface-2"
+        className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-secondary-raised"
       >
         <Avatar name={user.full_name} size="sm" />
         <span className="hidden text-left leading-tight sm:block">
-          <span className="block text-sm font-medium text-ink">{user.full_name}</span>
-          <span className="block text-[11px] text-ink-3">{titleCase(user.role)}</span>
+          <span className="block text-sm font-medium text-on-secondary">{user.full_name}</span>
+          <span className="block text-[11px] text-on-secondary-muted">{titleCase(user.role)}</span>
         </span>
       </button>
       {open && (
@@ -229,7 +229,7 @@ function ThemeToggle() {
         writePref(THEME_KEY, t);
         applyTheme(t);
       }}
-      className="rounded-lg p-2 text-ink-2 hover:bg-surface-2 hover:text-ink"
+      className="rounded-lg p-2 text-on-secondary-muted hover:bg-secondary-raised hover:text-on-secondary"
       aria-label={"Theme: " + theme + ". Switch to " + next[theme]}
       title={"Theme: " + theme}
     >
@@ -251,7 +251,7 @@ export function AppLayout() {
       </a>
       <aside
         className={clsx(
-          "sticky top-0 hidden h-screen shrink-0 border-r border-sidebar-line bg-sidebar transition-[width] lg:block",
+          "sticky top-0 hidden h-screen shrink-0 border-r border-secondary-line bg-secondary transition-[width] lg:block",
           collapsed ? "w-16" : "w-60",
         )}
       >
@@ -260,8 +260,8 @@ export function AppLayout() {
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} aria-hidden />
-          <aside className="absolute inset-y-0 left-0 w-64 border-r border-sidebar-line bg-sidebar" aria-label="Navigation drawer">
-            <button onClick={() => setMobileOpen(false)} className="absolute right-2 top-3 rounded-md p-1.5 text-sidebar-muted hover:bg-sidebar-hover" aria-label="Close navigation">
+          <aside className="absolute inset-y-0 left-0 w-64 border-r border-secondary-line bg-secondary" aria-label="Navigation drawer">
+            <button onClick={() => setMobileOpen(false)} className="absolute right-2 top-3 rounded-md p-1.5 text-on-secondary-muted hover:bg-secondary-raised hover:text-on-secondary" aria-label="Close navigation">
               <X className="size-4" />
             </button>
             <Sidebar collapsed={false} onNavigate={() => setMobileOpen(false)} />
@@ -269,8 +269,8 @@ export function AppLayout() {
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-surface/95 px-4 backdrop-blur sm:px-6">
-          <button onClick={() => setMobileOpen(true)} className="rounded-lg p-2 text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="Open navigation">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-secondary-line bg-secondary px-4 text-on-secondary sm:px-6">
+          <button onClick={() => setMobileOpen(true)} className="rounded-lg p-2 text-on-secondary-muted hover:bg-secondary-raised hover:text-on-secondary lg:hidden" aria-label="Open navigation">
             <Menu className="size-5" />
           </button>
           <button
@@ -280,12 +280,12 @@ export function AppLayout() {
                 return !c;
               });
             }}
-            className="hidden rounded-lg p-2 text-ink-2 hover:bg-surface-2 lg:inline-flex"
+            className="hidden rounded-lg p-2 text-on-secondary-muted hover:bg-secondary-raised hover:text-on-secondary lg:inline-flex"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
           </button>
-          <div className="hidden text-sm text-ink-2 sm:block">{formatDate(todayInOffice(), { weekday: "long" })}</div>
+          <div className="hidden text-sm text-on-secondary-muted sm:block">{formatDate(todayInOffice(), { weekday: "long" })}</div>
           <div className="ml-auto flex items-center gap-1">
             <ThemeToggle />
             <ProfileMenu />

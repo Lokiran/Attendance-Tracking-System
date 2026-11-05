@@ -4,14 +4,22 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /*
- * Design tokens.
- * Light = "Trust Blue": navy primary, slate neutrals, white cards, dark navy sidebar.
- * Dark  = "Dark Mode": deep navy surfaces with a light-blue primary.
- * Chart and status colours are validated with the dataviz palette validator against --surface
- * in each mode (light #ffffff, dark #151e2e); re-run it if those change.
+ * Colour system: the 60-30-10 rule (see docs/design-system.md).
+ *
+ *   60 % DOMINANT   neutral canvas and cards        --bg, --surface, --surface-2/3, --border, --text*
+ *   30 % SECONDARY  navy structure: sidebar, top     --secondary*, --secondary-soft (table headers)
+ *                   bar, hero bands
+ *   10 % ACCENT     bright blue, actions only:       --brand* (buttons, links, active indicator,
+ *                   what the user should act on       focus ring, progress)
+ *
+ * Status and chart colours are functional (they encode data), sit outside the 60-30-10 split and are
+ * validated with the dataviz palette validator against --surface (light #ffffff, dark #151e2e).
+ * Text/background pairs are checked for WCAG contrast (text >= 4.5:1, indicators >= 3:1).
  */
 :root {
   color-scheme: light;
+
+  /* 60 % dominant */
   --bg: #f8fafc;
   --surface: #ffffff;
   --surface-2: #f1f5f9;
@@ -21,23 +29,26 @@
   --text: #0f172a;
   --text-2: #334155;
   --text-3: #64748b;
-  --brand: #1e40af;
-  --brand-hover: #1d4ed8;
-  --brand-soft: #eff6ff;
-  --brand-text: #1e40af;
-  --on-brand: #ffffff;
-  --focus: #2563eb;
   --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
 
-  /* Sidebar: dark navy in both themes */
-  --sidebar-bg: #0f172a;
-  --sidebar-border: #0f172a;
-  --sidebar-text: #cbd5e1;
-  --sidebar-muted: #94a3b8;
-  --sidebar-hover: #1e293b;
-  --sidebar-active: #1e293b;
-  --sidebar-active-text: #ffffff;
-  --sidebar-icon-active: #60a5fa;
+  /* 30 % secondary */
+  --secondary: #0f172a;
+  --secondary-raised: #1e293b;     /* hover / selected item on the secondary colour */
+  --secondary-line: #1e293b;
+  --on-secondary: #f1f5f9;
+  --on-secondary-muted: #94a3b8;
+  --secondary-soft: #e8edf5;       /* light tint of the secondary colour: table headers */
+  --on-secondary-2: #cbd5e1;
+  --secondary-line-strong: #334155;
+
+  /* 10 % accent */
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-soft: #eff6ff;
+  --brand-text: #1d4ed8;           /* accent as text (links) on light surfaces */
+  --on-brand: #ffffff;
+  --accent-on-secondary: #60a5fa;  /* accent indicator placed on the secondary colour */
+  --focus: #2563eb;
 
   /* Status (fixed hues; always paired with an icon + label) */
   --good: #0ca30c;
@@ -50,11 +61,11 @@
   /* Chart roles */
   --chart-grid: #eef2f6;
   --chart-axis: #64748b;
-  --series-1: #2a78d6;
+  --series-1: #2563eb;           /* accent hue as the primary data series (validated) */
   --series-2: #eb6834;
   --series-3: #1baf7a;
   --st-present: #0ca30c;
-  --st-leave: #2a78d6;
+  --st-leave: #2563eb;
   --st-incomplete: #eda100;
   --st-absent: #d03b3b;
   --st-holiday: #6250d6;
@@ -74,21 +85,22 @@
   --text: #e2e8f0;
   --text-2: #a9b6c9;
   --text-3: #8492a8;
+  --shadow-card: none;
+  --secondary: #1d2a44;
+  --secondary-raised: #26365a;
+  --secondary-line: #2b3b5c;
+  --on-secondary: #e2e8f0;
+  --on-secondary-muted: #94a3b8;
+  --secondary-soft: #1b2638;
+  --on-secondary-2: #cbd5e1;
+  --secondary-line-strong: #3a4c70;
   --brand: #60a5fa;
   --brand-hover: #93c5fd;
   --brand-soft: #172554;
   --brand-text: #93c5fd;
   --on-brand: #0b1220;
+  --accent-on-secondary: #60a5fa;
   --focus: #60a5fa;
-  --shadow-card: none;
-  --sidebar-bg: #0b1220;
-  --sidebar-border: #263244;
-  --sidebar-text: #cbd5e1;
-  --sidebar-muted: #8492a8;
-  --sidebar-hover: #151e2e;
-  --sidebar-active: #1b2638;
-  --sidebar-active-text: #ffffff;
-  --sidebar-icon-active: #60a5fa;
   --critical-text: #f08a8a;
   --good-text: #4cc94c;
   --chart-grid: #223047;
@@ -118,21 +130,22 @@
     --text: #e2e8f0;
     --text-2: #a9b6c9;
     --text-3: #8492a8;
+    --shadow-card: none;
+    --secondary: #1d2a44;
+    --secondary-raised: #26365a;
+    --secondary-line: #2b3b5c;
+    --on-secondary: #e2e8f0;
+    --on-secondary-muted: #94a3b8;
+    --secondary-soft: #1b2638;
+    --on-secondary-2: #cbd5e1;
+    --secondary-line-strong: #3a4c70;
     --brand: #60a5fa;
     --brand-hover: #93c5fd;
     --brand-soft: #172554;
     --brand-text: #93c5fd;
     --on-brand: #0b1220;
+    --accent-on-secondary: #60a5fa;
     --focus: #60a5fa;
-    --shadow-card: none;
-    --sidebar-bg: #0b1220;
-    --sidebar-border: #263244;
-    --sidebar-text: #cbd5e1;
-    --sidebar-muted: #8492a8;
-    --sidebar-hover: #151e2e;
-    --sidebar-active: #1b2638;
-    --sidebar-active-text: #ffffff;
-    --sidebar-icon-active: #60a5fa;
     --critical-text: #f08a8a;
     --good-text: #4cc94c;
     --chart-grid: #223047;
@@ -160,24 +173,23 @@
   --color-ink: var(--text);
   --color-ink-2: var(--text-2);
   --color-ink-3: var(--text-3);
+  --color-secondary: var(--secondary);
+  --color-secondary-raised: var(--secondary-raised);
+  --color-secondary-line: var(--secondary-line);
+  --color-on-secondary: var(--on-secondary);
+  --color-on-secondary-muted: var(--on-secondary-muted);
+  --color-secondary-soft: var(--secondary-soft);
   --color-brand: var(--brand);
   --color-brand-hover: var(--brand-hover);
   --color-brand-soft: var(--brand-soft);
   --color-brand-text: var(--brand-text);
   --color-on-brand: var(--on-brand);
+  --color-accent-on-secondary: var(--accent-on-secondary);
   --color-good: var(--good);
   --color-warning: var(--warning);
   --color-critical: var(--critical);
   --color-critical-text: var(--critical-text);
   --color-good-text: var(--good-text);
-  --color-sidebar: var(--sidebar-bg);
-  --color-sidebar-line: var(--sidebar-border);
-  --color-sidebar-ink: var(--sidebar-text);
-  --color-sidebar-muted: var(--sidebar-muted);
-  --color-sidebar-hover: var(--sidebar-hover);
-  --color-sidebar-active: var(--sidebar-active);
-  --color-sidebar-active-ink: var(--sidebar-active-text);
-  --color-sidebar-icon-active: var(--sidebar-icon-active);
   --shadow-card: var(--shadow-card);
   --font-sans: "Inter Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
@@ -193,6 +205,26 @@ body {
   font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * A navy (secondary) band. Remaps surface, text and border tokens inside it, so any component
+ * (badges, buttons, inputs, links) stays readable without per-page overrides. Accent buttons keep
+ * the accent colour; links switch to the accent variant made for navy.
+ */
+.tone-secondary {
+  --surface: var(--secondary-raised);
+  --surface-2: var(--secondary-raised);
+  --surface-3: var(--secondary-line);
+  --border: var(--secondary-line);
+  --border-strong: var(--secondary-line-strong);
+  --text: var(--on-secondary);
+  --text-2: var(--on-secondary-2);
+  --text-3: var(--on-secondary-muted);
+  --brand-text: var(--accent-on-secondary);
+  --shadow-card: none;
+  background-color: var(--secondary);
+  color: var(--text);
 }
 
 :focus-visible {

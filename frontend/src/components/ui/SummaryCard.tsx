@@ -17,7 +17,7 @@ export function SummaryCard({ label, value, hint, icon, loading, onClick, active
     <>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-ink-2">{label}</span>
-        {icon && <span className="text-ink-3" aria-hidden>{icon}</span>}
+        {icon && <span className="rounded-md bg-brand-soft p-1.5 text-brand-text" aria-hidden>{icon}</span>}
       </div>
       {loading ? (
         <Skeleton className="mt-2 h-7 w-20" />

@@ -109,28 +109,28 @@ export function AttendanceActionCard({ user, onRequestCorrection, onRequestLeave
 
   return (
     <Card className="overflow-hidden">
-      <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4 tone-secondary p-5 sm:p-6">
         <div className="min-w-0">
-          <p className="text-sm text-ink-3">
+          <p className="text-sm text-on-secondary-muted">
             {formatDate(s.today, { weekday: "long", year: undefined })} · {shift}
           </p>
           {name ? (
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink">
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-on-secondary">
               {greeting()}, {name}
             </h1>
           ) : (
-            <h2 className="mt-1 text-lg font-semibold text-ink">Today</h2>
+            <h2 className="mt-1 text-lg font-semibold text-on-secondary">Today</h2>
           )}
           {user && (
-            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-2">
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-on-secondary-muted">
               <span className="tabular">{user.employee_code}</span>
-              <span aria-hidden className="text-ink-3">·</span>
+              <span aria-hidden className="text-on-secondary-muted">·</span>
               <span>{user.department?.name ?? "No department"}</span>
               {user.manager && (
                 <>
-                  <span aria-hidden className="text-ink-3">·</span>
+                  <span aria-hidden className="text-on-secondary-muted">·</span>
                   <span>
-                    Reports to <span className="text-ink">{user.manager.full_name}</span>
+                    Reports to <span className="text-on-secondary">{user.manager.full_name}</span>
                   </span>
                 </>
               )}
