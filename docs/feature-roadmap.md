@@ -34,7 +34,7 @@ I ask before any destructive database change or any new dependency that needs ap
 | | Multiple sessions per day | [x] |
 | | **Work location tag (Office / WFH / On-site)** | [ ] not on check-ins |
 | | **Missed check-out auto-close** | [~] detected and flagged; no scheduled auto-close |
-| | Duplicate / overlap prevention | [x] (PostgreSQL constraint written, not yet run on PostgreSQL) |
+| | Duplicate / overlap prevention | [x] (verified on PostgreSQL 16 in CI) |
 | | Timezone-correct days | [x] |
 | 2 Rules | Schedules (employee / department / org) | [x] |
 | | Holidays and weekly offs | [x] |
@@ -78,7 +78,7 @@ before auto-close and notifications; the payroll lock is needed before the payro
 
 | # | Feature | Why this position | Needs from outside |
 |---|---|---|---|
-| F0 | Quality gate: CI on GitHub with PostgreSQL | Every later feature gets tested on the real database automatically | — |
+| F0 ✅ | Quality gate: CI on GitHub with PostgreSQL | Every later feature gets tested on the real database automatically | — |
 | F1 | HR role | Later screens (balances, payroll, reports) are HR's | — |
 | F2 | Work location on check-in | Small, visible, used by reports later | — |
 | F3 | Early-leave and half-day rules | Changes day status; overtime and payroll build on it | HR rules |
@@ -98,7 +98,7 @@ before auto-close and notifications; the payroll lock is needed before the payro
 
 ## Feature details
 
-### F0 — Quality gate (CI with PostgreSQL)  [ ]
+### F0 — Quality gate (CI with PostgreSQL)  [x] done 2026-11-05
 - **Build:** GitHub Actions workflow: backend tests on PostgreSQL 16 with `--require-postgres`, frontend tests,
   type-check, build, `alembic upgrade head` + `alembic check`, on every push and pull request.
 - **Why first:** the 26 PostgreSQL tests have never run; CI runs them on GitHub's servers, not this laptop.
@@ -226,3 +226,4 @@ before auto-close and notifications; the payroll lock is needed before the payro
 | Date | Feature | Result |
 |---|---|---|
 | 2026-11-05 | Roadmap written and gap check done | — |
+| 2026-11-05 | F0 CI on PostgreSQL 16 | Green: migrations up/down/up + drift check, full backend suite incl. 26 PostgreSQL integration tests, frontend tests/type-check/build. First run exposed 2 test bugs (fixed). [run](https://github.com/Lokiran/Attendance-Tracking-System/actions/runs/41979671735) |

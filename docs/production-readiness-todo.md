@@ -23,13 +23,13 @@ Status: `[x]` done · `[ ]` open · `[~]` blocked (reason given). Each item has 
 ## P0 — Foundations (nothing else is trustworthy without these)
 
 ### Version control and review
-- [ ] Initialise git, commit the current verified state, push to a private remote.
+- [x] Git initialised and pushed to GitHub (repository is currently public; no secrets committed).
       *Done when:* the repo has history and a protected `main` branch.
 - [ ] Branch protection: pull requests only, one reviewer, CI must pass.
       *Done when:* a direct push to `main` is rejected.
 
 ### Continuous integration (the main defence against regressions)
-- [ ] CI pipeline running on every pull request:
+- [x] CI pipeline running on every push and pull request (`.github/workflows/ci.yml`, green 2026-11-05):
       backend tests **on PostgreSQL 16** (service container) with `--require-postgres`,
       frontend tests, type-check, production build, `alembic upgrade head` + `alembic check`.
       *Done when:* all 187 backend tests (incl. the 26 PostgreSQL ones) pass in CI.
@@ -42,10 +42,10 @@ Status: `[x]` done · `[ ]` open · `[~]` blocked (reason given). Each item has 
 - [ ] Dependency and secret scanning (`pip-audit`, `npm audit`, a secret scanner).
       *Done when:* CI blocks known-vulnerable dependencies and committed secrets.
 
-### Verify PostgreSQL (the production database has never been exercised)
-- [~] Run `scripts\test-postgres.ps1` against an approved PostgreSQL 16 (or in CI above).
-      Blocked locally: needs IT to install PostgreSQL or provide a server.
-      *Done when:* 0 skipped tests; migrations 0001→0002 up/down pass on PostgreSQL.
+### Verify PostgreSQL
+- [x] Verified on PostgreSQL 16 in CI (GitHub Actions service container), 2026-11-05: 0 PostgreSQL tests
+      skipped; migrations 0001→0002 up/down/up and drift check pass. PostgreSQL is still unavailable on the
+      laptop, so CI is the PostgreSQL gate (`scripts\test-postgres.ps1` remains for an approved server).
 
 ### Fix known rough edges found during testing
 - [ ] Admin and other *untracked* accounts: the personal dashboard shows "Absent" days and greets

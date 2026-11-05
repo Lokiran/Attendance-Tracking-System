@@ -25,8 +25,7 @@ Order of work: Phase 1 → Phase 5 (pure engine) → Phases 3, 4 → 6 → 7 →
 - [x] Safety: Alembic runs SQLite migrations with `PRAGMA foreign_keys=OFF` (a table rebuild would
       otherwise cascade-delete / null referencing rows); fixed version-stamp commit
 - [x] Dev database backed up to `backend/data/ats-dev.pre-0002.sqlite3`, then migrated to 0002
-- [~] 0002 up / down on PostgreSQL — tests written (`app/tests/postgres/test_pg_migrations.py`), not run:
-      no PostgreSQL available (winget download blocked with HTTP 403; installer also needs admin)
+- [x] 0002 up / down on PostgreSQL — verified in CI on PostgreSQL 16 (2026-11-05)
 
 ## Phase 5 – Rules engine (pure, no external systems)
 - [ ] Day evaluation: Wi-Fi → OFFICE; Teams ≥ N confirming polls → WFH; sessions split by gap; check-out grace
