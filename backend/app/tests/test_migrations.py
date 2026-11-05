@@ -4,6 +4,9 @@ The rendering checks compile the migration to PostgreSQL SQL *without* a server.
 dialect/DDL mistakes but are not a substitute for app/tests/postgres (which executes it).
 """
 
+import tempfile
+from pathlib import Path
+
 import pytest
 from sqlalchemy import inspect
 
@@ -81,11 +84,15 @@ def test_offline_postgres_downgrade_sql():
     assert "DROP EXTENSION" not in sql  # btree_gist is database-wide; it is intentionally kept
 
 
+# An absolute path on whichever OS runs the tests (C:/... is not absolute on Linux).
+ABS_SQLITE = "sqlite:///" + (Path(tempfile.gettempdir()) / "x.db").resolve().as_posix()
+
+
 @pytest.mark.parametrize("raw, expected", [
     ("postgresql://u:p@h:5432/db", "postgresql+psycopg://u:p@h:5432/db"),
     ("postgres://u:p@h/db", "postgresql+psycopg://u:p@h/db"),
     ("postgresql+psycopg://u:p@h/db", "postgresql+psycopg://u:p@h/db"),
-    ("sqlite:///C:/data/x.db", "sqlite:///C:/data/x.db"),
+    (ABS_SQLITE, ABS_SQLITE),
     ("sqlite://", "sqlite://"),
 ])
 def test_database_url_uses_psycopg3(raw, expected):
@@ -138,16 +145,16 @@ def test_0002_upgrade_preserves_existing_rows_and_accepts_auto_sources(empty_sch
     assert _rows("attendance_corrections") == corrections  # FK values survive the SQLite rebuild
     width = len(users[0])
     assert [r[:width] for r in _rows("users")] == users  # new columns are appended; old values unchanged
-    _exec("INSERT INTO attendance_sessions (employee_id, check_in_at, break_minutes, status, source, created_at, "
-          "updated_at) VALUES (1, '2026-03-11 04:00:00', 0, 'MISSING_CHECKOUT', 'AUTO_WIFI', "
+    _exec("INSERT INTO attendance_sessions (id, employee_id, check_in_at, break_minutes, status, source, "
+          "created_at, updated_at) VALUES (3, 1, '2026-03-11 04:00:00', 0, 'MISSING_CHECKOUT', 'AUTO_WIFI', "
           "'2026-03-11 04:00:00', '2026-03-11 04:00:00')")
     with pytest.raises(IntegrityError):
-        _exec("INSERT INTO attendance_sessions (employee_id, check_in_at, break_minutes, status, source, created_at, "
-              "updated_at) VALUES (1, '2026-03-12 04:00:00', 0, 'MISSING_CHECKOUT', 'BOGUS', "
+        _exec("INSERT INTO attendance_sessions (id, employee_id, check_in_at, break_minutes, status, source, "
+              "created_at, updated_at) VALUES (4, 1, '2026-03-12 04:00:00', 0, 'MISSING_CHECKOUT', 'BOGUS', "
               "'2026-03-12 04:00:00', '2026-03-12 04:00:00')")
     with pytest.raises(IntegrityError):  # the one-open-session index still works after the rebuild
-        _exec("INSERT INTO attendance_sessions (employee_id, check_in_at, break_minutes, status, source, created_at, "
-              "updated_at) VALUES (1, '2026-03-12 05:00:00', 0, 'OPEN', 'WEB', '2026-03-12 05:00:00', "
+        _exec("INSERT INTO attendance_sessions (id, employee_id, check_in_at, break_minutes, status, source, "
+              "created_at, updated_at) VALUES (4, 1, '2026-03-12 05:00:00', 0, 'OPEN', 'WEB', '2026-03-12 05:00:00', "
               "'2026-03-12 05:00:00')")
 
 
@@ -169,8 +176,8 @@ def test_0002_downgrade_refuses_while_auto_sessions_exist(empty_schema):
     _seed_0001_rows()
     before = _rows("attendance_sessions")
     upgrade("0002")
-    _exec("INSERT INTO attendance_sessions (employee_id, check_in_at, break_minutes, status, source, created_at, "
-          "updated_at) VALUES (1, '2026-03-11 04:00:00', 0, 'MISSING_CHECKOUT', 'AUTO_TEAMS', "
+    _exec("INSERT INTO attendance_sessions (id, employee_id, check_in_at, break_minutes, status, source, "
+          "created_at, updated_at) VALUES (3, 1, '2026-03-11 04:00:00', 0, 'MISSING_CHECKOUT', 'AUTO_TEAMS', "
           "'2026-03-11 04:00:00', '2026-03-11 04:00:00')")
     with pytest.raises(RuntimeError, match="Cannot downgrade 0002"):
         downgrade("0001")
