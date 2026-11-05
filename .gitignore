@@ -1,0 +1,33 @@
+# Secrets
+.env
+.env.*
+!.env.example
+!.env.sqlite.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.db
+*.sqlite3
+backend/data/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+coverage/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,214 @@
+@import "tailwindcss";
+
+/* Theme toggle: data-theme on <html> wins over the OS preference in both directions. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * Design tokens.
+ * Light = "Trust Blue": navy primary, slate neutrals, white cards, dark navy sidebar.
+ * Dark  = "Dark Mode": deep navy surfaces with a light-blue primary.
+ * Chart and status colours are validated with the dataviz palette validator against --surface
+ * in each mode (light #ffffff, dark #151e2e); re-run it if those change.
+ */
+:root {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --surface-3: #e2e8f0;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --text: #0f172a;
+  --text-2: #334155;
+  --text-3: #64748b;
+  --brand: #1e40af;
+  --brand-hover: #1d4ed8;
+  --brand-soft: #eff6ff;
+  --brand-text: #1e40af;
+  --on-brand: #ffffff;
+  --focus: #2563eb;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+
+  /* Sidebar: dark navy in both themes */
+  --sidebar-bg: #0f172a;
+  --sidebar-border: #0f172a;
+  --sidebar-text: #cbd5e1;
+  --sidebar-muted: #94a3b8;
+  --sidebar-hover: #1e293b;
+  --sidebar-active: #1e293b;
+  --sidebar-active-text: #ffffff;
+  --sidebar-icon-active: #60a5fa;
+
+  /* Status (fixed hues; always paired with an icon + label) */
+  --good: #0ca30c;
+  --warning: #eda100;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --critical-text: #b42318;
+  --good-text: #067647;
+
+  /* Chart roles */
+  --chart-grid: #eef2f6;
+  --chart-axis: #64748b;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --st-present: #0ca30c;
+  --st-leave: #2a78d6;
+  --st-incomplete: #eda100;
+  --st-absent: #d03b3b;
+  --st-holiday: #6250d6;
+  --st-off: #cbd5e1;
+  --st-pending: #94a3b8;
+}
+
+/* Explicit dark theme (selected with the theme button) */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b1220;
+  --surface: #151e2e;
+  --surface-2: #1b2638;
+  --surface-3: #22304a;
+  --border: #263244;
+  --border-strong: #354561;
+  --text: #e2e8f0;
+  --text-2: #a9b6c9;
+  --text-3: #8492a8;
+  --brand: #60a5fa;
+  --brand-hover: #93c5fd;
+  --brand-soft: #172554;
+  --brand-text: #93c5fd;
+  --on-brand: #0b1220;
+  --focus: #60a5fa;
+  --shadow-card: none;
+  --sidebar-bg: #0b1220;
+  --sidebar-border: #263244;
+  --sidebar-text: #cbd5e1;
+  --sidebar-muted: #8492a8;
+  --sidebar-hover: #151e2e;
+  --sidebar-active: #1b2638;
+  --sidebar-active-text: #ffffff;
+  --sidebar-icon-active: #60a5fa;
+  --critical-text: #f08a8a;
+  --good-text: #4cc94c;
+  --chart-grid: #223047;
+  --chart-axis: #8492a8;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --st-present: #0ca30c;
+  --st-leave: #3987e5;
+  --st-incomplete: #c98500;
+  --st-absent: #d03b3b;
+  --st-holiday: #9085e9;
+  --st-off: #475569;
+  --st-pending: #64748b;
+}
+
+/* "System" theme: follow the OS only when no explicit theme is chosen */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --bg: #0b1220;
+    --surface: #151e2e;
+    --surface-2: #1b2638;
+    --surface-3: #22304a;
+    --border: #263244;
+    --border-strong: #354561;
+    --text: #e2e8f0;
+    --text-2: #a9b6c9;
+    --text-3: #8492a8;
+    --brand: #60a5fa;
+    --brand-hover: #93c5fd;
+    --brand-soft: #172554;
+    --brand-text: #93c5fd;
+    --on-brand: #0b1220;
+    --focus: #60a5fa;
+    --shadow-card: none;
+    --sidebar-bg: #0b1220;
+    --sidebar-border: #263244;
+    --sidebar-text: #cbd5e1;
+    --sidebar-muted: #8492a8;
+    --sidebar-hover: #151e2e;
+    --sidebar-active: #1b2638;
+    --sidebar-active-text: #ffffff;
+    --sidebar-icon-active: #60a5fa;
+    --critical-text: #f08a8a;
+    --good-text: #4cc94c;
+    --chart-grid: #223047;
+    --chart-axis: #8492a8;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --st-present: #0ca30c;
+    --st-leave: #3987e5;
+    --st-incomplete: #c98500;
+    --st-absent: #d03b3b;
+    --st-holiday: #9085e9;
+    --st-off: #475569;
+    --st-pending: #64748b;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-2);
+  --color-ink-3: var(--text-3);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-text: var(--brand-text);
+  --color-on-brand: var(--on-brand);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-critical: var(--critical);
+  --color-critical-text: var(--critical-text);
+  --color-good-text: var(--good-text);
+  --color-sidebar: var(--sidebar-bg);
+  --color-sidebar-line: var(--sidebar-border);
+  --color-sidebar-ink: var(--sidebar-text);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-ink: var(--sidebar-active-text);
+  --color-sidebar-icon-active: var(--sidebar-icon-active);
+  --shadow-card: var(--shadow-card);
+  --font-sans: "Inter Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
