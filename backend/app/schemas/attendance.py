@@ -39,7 +39,6 @@ class DayRecordOut(BaseModel):
     has_active_session: bool
     unresolved_sessions: int
     holiday_name: str | None
-    leave_type: str | None
     exceptions: list[str]
 
     @classmethod
@@ -49,7 +48,7 @@ class DayRecordOut(BaseModel):
             required_minutes=r.required_minutes, net_minutes=r.net_minutes, session_count=r.session_count,
             completed_sessions=r.completed_sessions, first_check_in=r.first_check_in,
             last_check_out=r.last_check_out, has_active_session=r.has_active_session,
-            unresolved_sessions=r.unresolved_sessions, holiday_name=r.holiday_name, leave_type=r.leave_type,
+            unresolved_sessions=r.unresolved_sessions, holiday_name=r.holiday_name,
             exceptions=list(r.exceptions),
         )
 
@@ -62,7 +61,6 @@ class SummaryOut(BaseModel):
     present_expected_days: int
     extra_present_days: int
     absent_days: int
-    leave_days: int
     holiday_days: int
     weekend_days: int
     not_scheduled_days: int
@@ -82,7 +80,7 @@ class SummaryOut(BaseModel):
         return cls(
             start=s.start, end=s.end, expected_days=s.expected_days, present_days=s.present_days,
             present_expected_days=s.present_expected_days, extra_present_days=s.extra_present_days,
-            absent_days=s.absent_days, leave_days=s.leave_days, holiday_days=s.holiday_days,
+            absent_days=s.absent_days, holiday_days=s.holiday_days,
             weekend_days=s.weekend_days, not_scheduled_days=s.not_scheduled_days,
             incomplete_days=s.incomplete_days, not_yet_checked_in_days=s.not_yet_checked_in_days,
             net_minutes=s.net_minutes, required_minutes=s.required_minutes, variance_minutes=s.variance_minutes,

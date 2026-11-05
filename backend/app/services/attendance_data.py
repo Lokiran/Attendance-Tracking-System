@@ -12,8 +12,6 @@ from app.core.timeutil import local_date, local_day_bounds, office_tz
 from app.models import (
     AttendanceSession,
     Holiday,
-    LeaveRecord,
-    RequestStatus,
     SessionStatus,
     User,
     WorkSchedule,
@@ -22,7 +20,6 @@ from app.services.attendance_rules import (
     DayRecord,
     EmployeeData,
     HolidayData,
-    LeaveData,
     PolicyData,
     ScheduleData,
     SessionData,
@@ -57,7 +54,6 @@ class Bundle:
     sessions: dict[int, list[SessionData]]
     schedules: list[ScheduleData]
     holidays: list[HolidayData]
-    leaves: dict[int, list[LeaveData]]
     policy: PolicyData
 
 
@@ -69,7 +65,6 @@ def _chunks(ids: list[int]):
 def load_bundle(db: Session, employee_ids: list[int], start: date, end: date) -> Bundle:
     lo, hi = local_day_bounds(start, end)
     sessions: dict[int, list[SessionData]] = defaultdict(list)
-    leaves: dict[int, list[LeaveData]] = defaultdict(list)
     for chunk in _chunks(employee_ids):
         for s in db.scalars(
             select(AttendanceSession).where(
@@ -80,15 +75,6 @@ def load_bundle(db: Session, employee_ids: list[int], start: date, end: date) ->
             )
         ):
             sessions[s.employee_id].append(session_data(s))
-        for lv in db.scalars(
-            select(LeaveRecord).where(
-                LeaveRecord.employee_id.in_(chunk),
-                LeaveRecord.status == RequestStatus.APPROVED,
-                LeaveRecord.start_date <= end,
-                LeaveRecord.end_date >= start,
-            )
-        ).unique():
-            leaves[lv.employee_id].append(LeaveData(lv.employee_id, lv.start_date, lv.end_date, lv.leave_type.value))
 
     schedules = [
         schedule_data(s)
@@ -103,7 +89,7 @@ def load_bundle(db: Session, employee_ids: list[int], start: date, end: date) ->
         HolidayData(h.holiday_date, h.name, h.department_id)
         for h in db.scalars(select(Holiday).where(Holiday.holiday_date.between(start, end)))
     ]
-    return Bundle(sessions, schedules, holidays, leaves, policy_data(get_policy(db)))
+    return Bundle(sessions, schedules, holidays, policy_data(get_policy(db)))
 
 
 def compute_records(db: Session, employees: list[User], start: date, end: date) -> dict[int, list[DayRecord]]:
@@ -116,7 +102,7 @@ def compute_records(db: Session, employees: list[User], start: date, end: date) 
         e.id: build_day_records(
             employee_data(e), start, end, today=today, now=now, tz=tz,
             sessions=bundle.sessions.get(e.id, []), schedules=bundle.schedules, holidays=bundle.holidays,
-            leaves=bundle.leaves.get(e.id, []), policy=bundle.policy,
+            policy=bundle.policy,
         )
         for e in employees
     }

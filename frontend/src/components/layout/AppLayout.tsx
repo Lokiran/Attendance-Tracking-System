@@ -46,7 +46,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "My workspace",
     items: [
       { to: "/", label: "My dashboard", icon: LayoutDashboard, end: true },
-      { to: "/my/requests", label: "Requests & leave", icon: ClipboardList },
+      { to: "/my/requests", label: "My requests", icon: ClipboardList },
     ],
   },
   {

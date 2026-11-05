@@ -24,7 +24,6 @@ export const qk = {
   attendance: ["attendance"] as const,
   dashboard: ["dashboard"] as const,
   corrections: ["corrections"] as const,
-  leaves: ["leaves"] as const,
   admin: ["admin"] as const,
 };
 
@@ -137,7 +136,6 @@ export function useInvalidateAttendance() {
       qc.invalidateQueries({ queryKey: qk.attendance }),
       qc.invalidateQueries({ queryKey: qk.dashboard }),
       qc.invalidateQueries({ queryKey: qk.corrections }),
-      qc.invalidateQueries({ queryKey: qk.leaves }),
     ]);
 }
 

@@ -18,11 +18,11 @@ Browser (React SPA, Vite)  ──/api──►  FastAPI (Uvicorn)  ──SQLAlch
 backend/app/
   core/       config (env validation), security (Argon2id, tokens), errors, clock, timeutil
   db/         engine/session, declarative base, UTCDateTime type
-  models/     users, departments, attendance_sessions, work_schedules, holidays, leave_records,
+  models/     users, departments, attendance_sessions, work_schedules, holidays, leave_records (legacy, unused),
               attendance_corrections, audit_logs, user_sessions, login_attempts, attendance_policy
   schemas/    Pydantic request/response models
   services/   attendance_rules, attendance_data (bulk loading), attendance_service (check-in/out),
-              dashboard, corrections, leaves, admin_users, configuration, org, reports, scope,
+              dashboard, corrections, admin_users, configuration, org, reports, scope,
               auth_service, audit, policy
   api/        deps (auth, CSRF, roles, paging) + routes
   seed.py     repeatable demo data;  cli.py  seed / create-admin
@@ -42,7 +42,8 @@ frontend/src/
 | `attendance_sessions` | `check_out_at > check_in_at`, non-negative break/net, completed ⇒ totals present, **partial unique index: one OPEN per employee**, **PostgreSQL `EXCLUDE USING gist` against overlapping sessions** (`btree_gist`) |
 | `work_schedules` | single target (employee *or* department *or* org), minutes 1–1440, effective range check; overlapping assignments for the same target rejected by the service |
 | `holidays` | unique `(holiday_date, COALESCE(department_id, 0))` |
-| `leave_records` / `attendance_corrections` | status enums, reviewer, timestamps, `end >= start`, requested times ordered |
+| `attendance_corrections` | status enum, reviewer, timestamps, requested times ordered |
+| `leave_records` | legacy table from the removed leave feature; nothing reads or writes it |
 | `audit_logs` | actor, action, entity, before/after JSON, request id, IP |
 | `user_sessions` | HMAC of the session token (never the token), CSRF token, idle + absolute expiry, revocation |
 | `login_attempts` | throttling by email and by IP |
@@ -86,7 +87,7 @@ subtrees are computed with a recursive CTE (`UNION`, so they're cycle-safe).
 | Own attendance, check-in/out, requests | ✔ | ✔ | ✔ |
 | Read another person's attendance | ✘ | reporting **subtree** only | everyone |
 | Team dashboards / CSV | ✘ | own subtree, or a sub-manager's subtree | any manager / department / organisation |
-| Approve corrections & leave | ✘ | subtree (if policy allows), never own | everyone except self |
+| Approve corrections | ✘ | subtree (if policy allows), never own | everyone except self |
 | Users, departments, schedules, holidays, policy, audit log, org hierarchy | ✘ | ✘ | ✔ |
 
 * Enforced in the backend on every endpoint via dependencies (`require_roles`) and
@@ -133,9 +134,6 @@ Interactive documentation: `http://127.0.0.1:8000/api/docs` (Swagger) and `/api/
 | GET | `/api/attendance/employees/{id}/days/{day}` | One day with its sessions (incl. voided) |
 | GET/POST | `/api/corrections` | List mine / reviewable; submit a request |
 | POST | `/api/corrections/{id}/approve` `…/reject` `…/cancel` | Workflow actions |
-| GET/POST | `/api/leaves` | List mine / reviewable; request leave |
-| POST | `/api/leaves/record` | Reviewer records approved leave |
-| POST | `/api/leaves/{id}/approve` `…/reject` `…/cancel` | Workflow actions |
 | GET | `/api/dashboard/overview` | Snapshot cards + period statistics for a scope |
 | GET | `/api/dashboard/employees` | Per-employee table (search, status, sort, paging) |
 | GET | `/api/dashboard/trends` | Team trends by day/week/month |

@@ -155,33 +155,15 @@ def test_overnight_correction(client, org):
     assert day["record"]["net_minutes"] == 450
 
 
-def test_leave_request_and_approval_affects_attendance(client, org):
+def test_leave_endpoints_are_gone(client, org):
+    """Leave was removed: attendance is office presence only."""
     h = login(client, org.rahul)
-    r = client.post("/api/leaves", headers=h, json={"start_date": "2026-03-02", "end_date": "2026-03-03",
-                                                    "leave_type": "SICK", "reason": "Flu"})
-    assert r.status_code == 201
-    lid = r.json()["id"]
-    before = client.get(f"/api/attendance/employees/{org.rahul.id}/summary",
-                        params={"start": "2026-03-02", "end": "2026-03-03"}).json()
-    assert before["absent_days"] == 2 and before["leave_days"] == 0  # pending leave has no effect
-    assert client.post("/api/leaves", headers=h, json={"start_date": "2026-03-03", "end_date": "2026-03-04",
-                                                       "leave_type": "ANNUAL"}).status_code == 409
-    h = login(client, org.priya)
-    assert client.post(f"/api/leaves/{lid}/approve", headers=h, json={}).status_code == 200
-    h = login(client, org.rahul)
-    after = client.get(f"/api/attendance/employees/{org.rahul.id}/summary",
-                       params={"start": "2026-03-02", "end": "2026-03-03"}).json()
-    assert after["leave_days"] == 2 and after["absent_days"] == 0 and after["expected_days"] == 0
-
-
-def test_manager_records_leave_for_report(client, org):
-    h = login(client, org.priya)
-    r = client.post("/api/leaves/record", headers=h, json={"employee_id": org.sneha.id, "start_date": "2026-03-05",
-                                                           "end_date": "2026-03-05", "leave_type": "CASUAL"})
-    assert r.status_code == 201 and r.json()["status"] == "APPROVED"
-    r = client.post("/api/leaves/record", headers=h, json={"employee_id": org.arjun.id, "start_date": "2026-03-05",
-                                                           "end_date": "2026-03-05", "leave_type": "CASUAL"})
-    assert r.status_code == 404
+    assert client.get("/api/leaves").status_code == 404
+    assert client.post("/api/leaves", headers=h, json={"start_date": "2026-03-02", "end_date": "2026-03-03",
+                                                       "leave_type": "SICK"}).status_code == 404
+    summary = client.get(f"/api/attendance/employees/{org.rahul.id}/summary",
+                         params={"start": "2026-03-02", "end": "2026-03-03"}).json()
+    assert "leave_days" not in summary and summary["absent_days"] == 2
 
 
 def test_correction_inside_active_session_rejected(client, frozen, org, db):

@@ -1,12 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { CalendarPlus } from "lucide-react";
-import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "@/auth/AuthContext";
 import { EmployeeAttendanceView } from "@/components/attendance/EmployeeAttendanceView";
-import { LeaveFormModal } from "@/components/attendance/RequestForms";
-import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Misc";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSkeleton } from "@/components/ui/Skeleton";
@@ -21,7 +17,6 @@ export function EmployeeDetailPage() {
   const employeeId = Number(id);
   const { user } = useAuth();
   const [params] = useSearchParams();
-  const [leave, setLeave] = useState(false);
   const members = useQuery({
     queryKey: ["team-members", "all"],
     queryFn: () => api.get<TeamMember[]>("/team/members", { include_inactive: true }),
@@ -34,41 +29,33 @@ export function EmployeeDetailPage() {
 
   const back = "/team?" + new URLSearchParams({ start: params.get("start") ?? "", end: params.get("end") ?? "" }).toString();
   return (
-    <>
-      <EmployeeAttendanceView
-        employeeId={employeeId}
-        isSelf={false}
-        header={
-          <PageHeader
-            breadcrumb={
-              <>
-                <Link to={user.role === "ADMIN" ? "/admin" : back} className="hover:underline">
-                  {user.role === "ADMIN" ? "Organisation" : "Team"}
-                </Link>{" "}
-                / {emp.department_name ?? "Unassigned"} / {emp.full_name}
-              </>
-            }
-            title={
-              <span className="flex items-center gap-3">
-                <Avatar name={emp.full_name} />
-                <span>
-                  {emp.full_name}
-                  <span className="block text-sm font-normal text-ink-2">
-                    {emp.employee_code} · {emp.job_title ?? titleCase(emp.role)} · reports to {emp.manager_name ?? "—"}
-                    {!emp.is_active && " · inactive"}
-                  </span>
+    <EmployeeAttendanceView
+      employeeId={employeeId}
+      isSelf={false}
+      header={
+        <PageHeader
+          breadcrumb={
+            <>
+              <Link to={user.role === "ADMIN" ? "/admin" : back} className="hover:underline">
+                {user.role === "ADMIN" ? "Organisation" : "Team"}
+              </Link>{" "}
+              / {emp.department_name ?? "Unassigned"} / {emp.full_name}
+            </>
+          }
+          title={
+            <span className="flex items-center gap-3">
+              <Avatar name={emp.full_name} />
+              <span>
+                {emp.full_name}
+                <span className="block text-sm font-normal text-ink-2">
+                  {emp.employee_code} · {emp.job_title ?? titleCase(emp.role)} · reports to {emp.manager_name ?? "—"}
+                  {!emp.is_active && " · inactive"}
                 </span>
               </span>
-            }
-            actions={
-              <Button variant="secondary" icon={<CalendarPlus className="size-4" />} onClick={() => setLeave(true)}>
-                Record leave
-              </Button>
-            }
-          />
-        }
-      />
-      <LeaveFormModal open={leave} onClose={() => setLeave(false)} employeeId={emp.id} employeeName={emp.full_name} />
-    </>
+            </span>
+          }
+        />
+      }
+    />
   );
 }

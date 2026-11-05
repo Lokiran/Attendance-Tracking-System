@@ -74,12 +74,7 @@ export function DayDetailModal({ employeeId, date, onClose, onRequestCorrection 
                   <ExceptionTags codes={rec.exceptions} />
                 </dd>
               </div>
-              {(rec.holiday_name || rec.leave_type) && (
-                <div className="col-span-2 text-xs text-ink-2">
-                  {rec.holiday_name && "Holiday: " + rec.holiday_name}
-                  {rec.leave_type && " Approved leave: " + titleCase(rec.leave_type)}
-                </div>
-              )}
+              {rec.holiday_name && <div className="col-span-2 text-xs text-ink-2">Holiday: {rec.holiday_name}</div>}
             </dl>
           )}
           {detail.data?.sessions.length ? (

@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarX2, Clock3, Gauge, Palmtree, UserCheck, Users } from "lucide-react";
+import { AlertTriangle, CalendarX2, Clock3, Gauge, UserCheck, Users } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -19,7 +19,7 @@ import { exceptionLabel, formatDate, formatMinutes, formatPercent, formatTime, h
 import { useEmployeeRows, useExceptions, useOverview, useTeamTrends, type ScopeParams } from "@/lib/queries";
 import type { DayStatus, EmployeeRow, ExceptionRow } from "@/lib/types";
 
-const CARD_FILTER: Record<string, DayStatus> = { present: "PRESENT", absent: "ABSENT", leave: "ON_LEAVE", incomplete: "INCOMPLETE", pending: "NOT_YET_CHECKED_IN" };
+const CARD_FILTER: Record<string, DayStatus> = { present: "PRESENT", absent: "ABSENT", incomplete: "INCOMPLETE", pending: "NOT_YET_CHECKED_IN" };
 
 /**
  * Team analytics for a scope: a manager's own subtree (no scope), another manager's subtree
@@ -116,14 +116,13 @@ export function TeamDashboardView({ scope, title, description, breadcrumb, extra
       {overview.isError ? (
         <Card><ErrorState error={overview.error} onRetry={() => overview.refetch()} /></Card>
       ) : (
-        <CardGrid cols={7}>
+        <CardGrid cols={6}>
           <SummaryCard label="Team size" icon={<Users className="size-4" />} loading={!o} value={o?.headcount} hint="active, tracked people" />
           <SummaryCard label={isToday ? "Present today" : "Present"} icon={<UserCheck className="size-4" />} loading={!o} value={snap?.present} hint={snap && `${snap.checked_in_now} in office now`} {...statusCard("present")} />
           <SummaryCard label={isToday ? "Absent today" : "Absent"} icon={<CalendarX2 className="size-4" />} loading={!o} value={snap && snap.absent + snap.not_checked_in} hint={snap && (snap.not_checked_in ? `${snap.not_checked_in} not checked in yet` : `${snap.off} off / not scheduled`)} {...statusCard(isToday && snap?.not_checked_in ? "pending" : "absent")} />
-          <SummaryCard label="On approved leave" icon={<Palmtree className="size-4" />} loading={!o} value={snap?.on_leave} {...statusCard("leave")} />
           <SummaryCard label="Incomplete" icon={<AlertTriangle className="size-4" />} loading={!o} value={snap?.incomplete} hint={o && `${o.period.unresolved_sessions} unresolved session(s) in period`} {...statusCard("incomplete")} />
           <SummaryCard label="Avg net / day" icon={<Clock3 className="size-4" />} loading={!o} value={formatMinutes(o?.period.average_net_minutes)} hint="per attended day in period" />
-          <SummaryCard label="Team attendance" icon={<Gauge className="size-4" />} loading={!o} value={formatPercent(o?.period.attendance_percentage)} hint={o && <Link className="hover:underline" to="/approvals">{o.pending_corrections} correction(s), {o.pending_leave} leave pending</Link>} />
+          <SummaryCard label="Team attendance" icon={<Gauge className="size-4" />} loading={!o} value={formatPercent(o?.period.attendance_percentage)} hint={o && <Link className="hover:underline" to="/approvals">{o.pending_corrections} correction(s) pending</Link>} />
         </CardGrid>
       )}
       {!valid && <p role="alert" className="text-sm text-critical-text">Choose an end date on or after the start date.</p>}
@@ -139,7 +138,7 @@ export function TeamDashboardView({ scope, title, description, breadcrumb, extra
           onRetry={() => daily.refetch()}
           isEmpty={!daily.data?.items.some((b) => b.expected || b.present)}
           legend={<Legend items={TEAM_STACK.map((s) => ({ label: s.label, color: s.color }))} />}
-          table={{ columns: ["Date", ...TEAM_STACK.map((s) => s.label)], rows: (daily.data?.items ?? []).map((b) => [b.start, b.present, b.on_leave, b.incomplete, b.absent]) }}
+          table={{ columns: ["Date", ...TEAM_STACK.map((s) => s.label)], rows: (daily.data?.items ?? []).map((b) => [b.start, b.present, b.incomplete, b.absent]) }}
         >
           <TeamDailyChart items={daily.data?.items ?? []} onSelectDate={(d) => set({ on_date: d === today ? null : d })} />
         </ChartCard>

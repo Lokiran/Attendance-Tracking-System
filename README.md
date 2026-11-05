@@ -20,11 +20,12 @@ More detail:
 
 * **Employee dashboard**
   * Check-in/check-out using server time, with the elapsed time shown live.
-  * Summary cards: present, absent, leave, net hours, average per day, attendance %.
+  * Summary cards: present, absent, shift hours, hours worked, average per day, attendance %.
   * Monthly calendar with per-day session details.
   * Charts: daily net hours, 6-month trend, status distribution, actual vs required hours.
   * Filterable, paginated history.
-  * Correction and leave requests with status tracking, plus holidays.
+  * Correction requests with status tracking, plus holidays. There is no leave: attendance is office
+    presence, measured against the shift's hours.
 * **Manager dashboard** (whole reporting subtree)
   * Today's snapshot cards: categories are mutually exclusive and clickable as filters.
   * Daily stacked attendance and weekly/monthly trends.
@@ -201,8 +202,8 @@ powershell -ExecutionPolicy Bypass -File scripts\test-postgres.ps1 -DatabaseUrl 
 ## Demo users
 
 `python -m app.cli seed` creates the users below. It also creates 75 days of attendance (including
-multi-session days, missing check-outs, overnight shifts, leave, holidays and absences) plus
-pending, approved and rejected corrections and leave. All dates are relative to the current day.
+multi-session days, missing check-outs, overnight shifts, holidays and absences) plus
+pending, approved and rejected corrections. All dates are relative to the current day.
 
 | Name | Role | Email | Reports to |
 |---|---|---|---|
@@ -340,5 +341,5 @@ backend\.venv\Scripts\python.exe scripts\smoke_test.py
   notification.
 * Dashboards compute statistics in the API process. That is fine for hundreds of employees;
   thousands would need pre-aggregated daily tables or caching.
-* Leave balances/accruals, notifications (email/Slack) and multi-location holiday calendars
+* Notifications (email/Slack) and multi-location holiday calendars
   are out of scope for this version.

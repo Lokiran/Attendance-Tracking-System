@@ -4,13 +4,12 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { AttendanceActionCard } from "@/components/attendance/AttendanceActionCard";
 import { EmployeeAttendanceView } from "@/components/attendance/EmployeeAttendanceView";
-import { CorrectionFormModal, LeaveFormModal } from "@/components/attendance/RequestForms";
+import { CorrectionFormModal } from "@/components/attendance/RequestForms";
 import { CorrectionsList } from "@/components/attendance/RequestLists";
 
 export function MyDashboard() {
   const { user } = useAuth();
   const [fix, setFix] = useState<{ date: string | null; sessionId: number | null } | null>(null);
-  const [leave, setLeave] = useState(false);
   if (!user) return null;
 
   return (
@@ -19,7 +18,6 @@ export function MyDashboard() {
         user={user}
         onRequestCorrection={(date, sessionId) => setFix({ date, sessionId })}
         onFixPastDay={() => setFix({ date: null, sessionId: null })}
-        onRequestLeave={() => setLeave(true)}
       />
 
       <EmployeeAttendanceView employeeId={user.id} isSelf />
@@ -28,14 +26,13 @@ export function MyDashboard() {
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">My correction requests</h2>
           <Link to="/my/requests" className="text-xs font-medium text-brand-text hover:underline">
-            All requests & leave →
+            All my requests →
           </Link>
         </div>
         <CorrectionsList scope="mine" title="Recent correction requests" pageSize={5} />
       </div>
 
       <CorrectionFormModal open={!!fix} onClose={() => setFix(null)} date={fix?.date ?? null} sessionId={fix?.sessionId ?? null} />
-      <LeaveFormModal open={leave} onClose={() => setLeave(false)} />
     </div>
   );
 }

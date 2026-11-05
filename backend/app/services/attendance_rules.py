@@ -1,8 +1,9 @@
 """Pure attendance rules: the single source of truth for day statuses and period metrics.
 
 No database or framework access happens here, so every rule is unit-testable. Callers load
-sessions, schedules, holidays and approved leave, then call :func:`build_day_records` and
-:func:`summarize`.
+sessions, schedules and holidays, then call :func:`build_day_records` and :func:`summarize`.
+Attendance is office presence only: worked hours come from check-in/check-out sessions and are
+measured against the shift's required hours. There is no leave.
 
 Rules (also documented in docs/ATTENDANCE_RULES.md):
 
@@ -14,11 +15,12 @@ Rules (also documented in docs/ATTENDANCE_RULES.md):
   INCOMPLETE unless it is otherwise PRESENT. A younger OPEN session is *active* (e.g. a night
   shift still running after midnight) and makes its start day PRESENT.
 * Day status precedence: PRESENT > INCOMPLETE > (scheduled workday: ABSENT /
-  NOT_YET_CHECKED_IN) > HOLIDAY / ON_LEAVE / WEEKEND / NOT_SCHEDULED.
+  NOT_YET_CHECKED_IN) > HOLIDAY / WEEKEND / NOT_SCHEDULED.
 * A day is *expected* (in the attendance-percentage denominator) when it is a scheduled
-  working day that is not a holiday and not approved leave, has ended or is today with
-  attendance, and is on/after the employee's joining date. Attending on approved leave makes
-  that day expected and present. Today without attendance is NOT_YET_CHECKED_IN and excluded.
+  working day that is not a holiday, has ended or is today with attendance, and is on/after
+  the employee's joining date. Today without attendance is NOT_YET_CHECKED_IN and excluded.
+* Required minutes of an expected day = the shift's ``required_minutes``; a present past day
+  with fewer net minutes gets the SHORT_HOURS exception.
 """
 
 from __future__ import annotations
@@ -82,14 +84,6 @@ class HolidayData:
 
 
 @dataclass(frozen=True)
-class LeaveData:
-    employee_id: int
-    start_date: date
-    end_date: date
-    leave_type: str
-
-
-@dataclass(frozen=True)
 class EmployeeData:
     id: int
     department_id: int | None
@@ -112,7 +106,6 @@ class DayRecord:
     has_active_session: bool
     unresolved_sessions: int
     holiday_name: str | None = None
-    leave_type: str | None = None
     exceptions: list[str] = field(default_factory=list)
 
 
@@ -125,7 +118,6 @@ class Summary:
     present_expected_days: int = 0
     extra_present_days: int = 0
     absent_days: int = 0
-    leave_days: int = 0
     holiday_days: int = 0
     weekend_days: int = 0
     not_scheduled_days: int = 0
@@ -214,7 +206,6 @@ def build_day_records(
     sessions: Iterable[SessionData],
     schedules: Sequence[ScheduleData],
     holidays: Iterable[HolidayData],
-    leaves: Iterable[LeaveData],
     policy: PolicyData,
 ) -> list[DayRecord]:
     """Day records for ``start..min(end, today)``. Future dates are never evaluated."""
@@ -232,18 +223,16 @@ def build_day_records(
         if h.department_id is None or h.department_id == employee.department_id:
             holiday_map.setdefault(h.holiday_date, h.name)
 
-    leave_list = [lv for lv in leaves if lv.employee_id == employee.id]
-
     records: list[DayRecord] = []
     d = start
     while d <= end:
         records.append(_day_record(employee, d, today, now, tz, sorted(by_day.get(d, []), key=lambda s: s.check_in_at),
-                                   schedules, holiday_map, leave_list, policy))
+                                   schedules, holiday_map, policy))
         d += timedelta(days=1)
     return records
 
 
-def _day_record(employee, d, today, now, tz, day_sessions, schedules, holiday_map, leaves, policy) -> DayRecord:
+def _day_record(employee, d, today, now, tz, day_sessions, schedules, holiday_map, policy) -> DayRecord:
     completed = [s for s in day_sessions if s.status == SessionStatus.COMPLETED]
     unresolved = [s for s in day_sessions if is_unresolved(s, today, now, tz, policy)]
     active = [s for s in day_sessions if s.status == SessionStatus.OPEN and s not in unresolved]
@@ -252,7 +241,6 @@ def _day_record(employee, d, today, now, tz, day_sessions, schedules, holiday_ma
     schedule = resolve_schedule(schedules, employee, d) if d >= employee.date_joined else None
     workday = schedule is not None and d.isoweekday() in schedule.working_days
     holiday = holiday_map.get(d) if workday else None
-    leave = next((lv for lv in leaves if lv.start_date <= d <= lv.end_date), None) if workday else None
 
     if d < today:
         # A still-running (e.g. overnight) session also makes its start day present.
@@ -269,8 +257,8 @@ def _day_record(employee, d, today, now, tz, day_sessions, schedules, holiday_ma
         expected = workday and holiday is None
     elif unresolved:
         status = DayStatus.INCOMPLETE
-        expected = workday and holiday is None and leave is None
-    elif workday and holiday is None and leave is None:
+        expected = workday and holiday is None
+    elif workday and holiday is None:
         if d == today:
             status, expected = DayStatus.NOT_YET_CHECKED_IN, False
         else:
@@ -278,8 +266,6 @@ def _day_record(employee, d, today, now, tz, day_sessions, schedules, holiday_ma
             exceptions.append(EXC_BELOW_MINIMUM if completed else EXC_ABSENT)
     elif holiday is not None:
         status, expected = DayStatus.HOLIDAY, False
-    elif leave is not None:
-        status, expected = DayStatus.ON_LEAVE, False
     elif schedule is not None:
         status, expected = DayStatus.WEEKEND, False
     else:
@@ -315,7 +301,6 @@ def _day_record(employee, d, today, now, tz, day_sessions, schedules, holiday_ma
         has_active_session=bool(active),
         unresolved_sessions=len(unresolved),
         holiday_name=holiday_map.get(d) if (schedule is not None and d in holiday_map) else None,
-        leave_type=leave.leave_type if leave else None,
         exceptions=exceptions,
     )
 
@@ -341,8 +326,6 @@ def summarize(records: Iterable[DayRecord], start: date, end: date) -> Summary:
                     s.attended_days_for_average += 1
             case DayStatus.ABSENT:
                 s.absent_days += 1
-            case DayStatus.ON_LEAVE:
-                s.leave_days += 1
             case DayStatus.HOLIDAY:
                 s.holiday_days += 1
             case DayStatus.WEEKEND:

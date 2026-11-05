@@ -1,4 +1,4 @@
-import { CalendarCheck2, CalendarX2, Clock3, Gauge, Palmtree, Timer } from "lucide-react";
+import { CalendarCheck2, CalendarClock, CalendarX2, Clock3, Gauge, Timer } from "lucide-react";
 import { useState } from "react";
 
 import { ActualVsRequiredChart, AttendanceTrendChart, DailyHoursChart, StatusDistributionChart } from "@/components/charts/Charts";
@@ -22,12 +22,12 @@ function dayCount(n: number) {
   return n === 1 ? "1 day" : `${n} days`;
 }
 
-/** "2h 15m short of 24h 00m target" — plain language instead of a signed variance. */
-function targetHint(s: Summary) {
-  if (!s.required_minutes) return "no target in this period";
+/** "2h 15m short of the shift hours" — plain language instead of a signed variance. */
+function shiftHint(s: Summary) {
+  if (!s.required_minutes) return "no shift hours in this period";
   const v = s.variance_minutes;
-  if (v === 0) return `right on the ${formatMinutes(s.required_minutes)} target`;
-  return `${formatMinutes(Math.abs(v))} ${v < 0 ? "short of" : "over"} ${formatMinutes(s.required_minutes)} target`;
+  if (v === 0) return "exactly the shift hours";
+  return `${formatMinutes(Math.abs(v))} ${v < 0 ? "short of" : "over"} the shift hours`;
 }
 
 /** Summary cards, calendar, charts and history for one employee — used for "me" and for drill-down. */
@@ -49,7 +49,6 @@ export function EmployeeAttendanceView({ employeeId, isSelf, header }: { employe
     ? [
         { status: "PRESENT", count: s.present_days },
         { status: "ABSENT", count: s.absent_days },
-        { status: "ON_LEAVE", count: s.leave_days },
         { status: "INCOMPLETE", count: s.incomplete_days },
         { status: "HOLIDAY", count: s.holiday_days },
         { status: "WEEKEND", count: s.weekend_days },
@@ -73,9 +72,10 @@ export function EmployeeAttendanceView({ employeeId, isSelf, header }: { employe
           <SummaryCard label="Days present" icon={<CalendarCheck2 className="size-4" />} loading={!s} value={s?.present_days}
             hint={s && (s.extra_present_days ? `incl. ${dayCount(s.extra_present_days)} outside schedule` : `of ${dayCount(s.expected_days)} scheduled`)} />
           <SummaryCard label="Days absent" icon={<CalendarX2 className="size-4" />} loading={!s} value={s?.absent_days}
-            hint={s && (s.incomplete_days ? `plus ${dayCount(s.incomplete_days)} missing a check-out` : "without approved leave")} />
-          <SummaryCard label="Leave taken" icon={<Palmtree className="size-4" />} loading={!s} value={s?.leave_days} hint="approved leave days" />
-          <SummaryCard label="Hours worked" icon={<Clock3 className="size-4" />} loading={!s} value={formatMinutes(s?.net_minutes)} hint={s && targetHint(s)} />
+            hint={s && (s.incomplete_days ? `plus ${dayCount(s.incomplete_days)} missing a check-out` : "scheduled days not in office")} />
+          <SummaryCard label="Shift hours" icon={<CalendarClock className="size-4" />} loading={!s} value={formatMinutes(s?.required_minutes)}
+            hint={s && (s.expected_days ? `required for ${dayCount(s.expected_days)} scheduled` : "no scheduled days yet")} />
+          <SummaryCard label="Hours worked" icon={<Clock3 className="size-4" />} loading={!s} value={formatMinutes(s?.net_minutes)} hint={s && shiftHint(s)} />
           <SummaryCard label="Avg per day" icon={<Timer className="size-4" />} loading={!s} value={formatMinutes(s?.average_net_minutes)}
             hint={s && (s.attended_days_for_average ? `across ${dayCount(s.attended_days_for_average)} worked` : "no completed days yet")} />
           <SummaryCard label="Attendance rate" icon={<Gauge className="size-4" />} loading={!s} value={formatPercent(s?.attendance_percentage)}

@@ -1,4 +1,4 @@
-"""Attendance correction and leave request endpoints."""
+"""Attendance correction request endpoints."""
 
 from typing import Literal
 
@@ -8,18 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import DB, CurrentUser, Ctx, Paging
 from app.core.errors import Forbidden
-from app.models import AttendanceCorrection, LeaveRecord, RequestStatus, Role, User
+from app.models import AttendanceCorrection, RequestStatus, Role, User
 from app.schemas.common import Page
-from app.schemas.requests import (
-    CorrectionCreate,
-    CorrectionOut,
-    LeaveCreate,
-    LeaveOut,
-    LeaveRecordCreate,
-    ReviewRequest,
-)
-from app.services import corrections, leaves
-from app.services.scope import get_viewable_employee, subtree_ids
+from app.schemas.requests import CorrectionCreate, CorrectionOut, ReviewRequest
+from app.services import corrections
+from app.services.scope import subtree_ids
 
 router = APIRouter(tags=["requests"])
 
@@ -83,42 +76,3 @@ def reject_correction(correction_id: int, body: ReviewRequest, user: CurrentUser
 @router.post("/corrections/{correction_id}/cancel", response_model=CorrectionOut)
 def cancel_correction(correction_id: int, user: CurrentUser, db: DB, ctx: Ctx):
     return corrections.cancel(db, user, correction_id, ctx)
-
-
-# ------------------------------------------------------------------------ leave
-
-@router.get("/leaves", response_model=Page[LeaveOut], summary="List my or reviewable leave")
-def list_leaves(user: CurrentUser, db: DB, paging: Paging, scope: ScopeParam = "mine",
-                status: RequestStatus | None = None, employee_id: int | None = Query(None)):
-    stmt = _scoped(db, user, LeaveRecord, scope, employee_id)
-    if status:
-        stmt = stmt.where(LeaveRecord.status == status)
-    return _page(db, stmt, LeaveRecord, paging, LeaveOut)
-
-
-@router.post("/leaves", response_model=LeaveOut, status_code=201, summary="Request leave for myself")
-def create_leave(body: LeaveCreate, user: CurrentUser, db: DB, ctx: Ctx):
-    return leaves.request_leave(db, user, body.start_date, body.end_date, body.leave_type, body.reason, ctx)
-
-
-@router.post("/leaves/record", response_model=LeaveOut, status_code=201,
-             summary="Record approved leave for an employee (reviewer)")
-def record_leave(body: LeaveRecordCreate, user: CurrentUser, db: DB, ctx: Ctx):
-    employee = get_viewable_employee(db, user, body.employee_id)
-    return leaves.record_approved_leave(db, user, employee, body.start_date, body.end_date, body.leave_type,
-                                        body.reason, ctx)
-
-
-@router.post("/leaves/{leave_id}/approve", response_model=LeaveOut)
-def approve_leave(leave_id: int, body: ReviewRequest, user: CurrentUser, db: DB, ctx: Ctx):
-    return leaves.review(db, user, leave_id, True, body.comment, ctx)
-
-
-@router.post("/leaves/{leave_id}/reject", response_model=LeaveOut)
-def reject_leave(leave_id: int, body: ReviewRequest, user: CurrentUser, db: DB, ctx: Ctx):
-    return leaves.review(db, user, leave_id, False, body.comment, ctx)
-
-
-@router.post("/leaves/{leave_id}/cancel", response_model=LeaveOut)
-def cancel_leave(leave_id: int, user: CurrentUser, db: DB, ctx: Ctx):
-    return leaves.cancel(db, user, leave_id, ctx)

@@ -46,7 +46,6 @@ class AutoSource(StrEnum):
 class DayStatus(StrEnum):
     PRESENT = "PRESENT"
     ABSENT = "ABSENT"
-    ON_LEAVE = "ON_LEAVE"
     HOLIDAY = "HOLIDAY"
     WEEKEND = "WEEKEND"
     INCOMPLETE = "INCOMPLETE"
@@ -55,6 +54,8 @@ class DayStatus(StrEnum):
 
 
 class LeaveType(StrEnum):
+    """Retired with the leave feature; kept only because the legacy leave_records table uses it."""
+
     ANNUAL = "ANNUAL"
     SICK = "SICK"
     CASUAL = "CASUAL"

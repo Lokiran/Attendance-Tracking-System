@@ -30,10 +30,10 @@ Order of work: Phase 1 → Phase 5 (pure engine) → Phases 3, 4 → 6 → 7 →
 ## Phase 5 – Rules engine (pure, no external systems)
 - [ ] Day evaluation: Wi-Fi → OFFICE; Teams ≥ N confirming polls → WFH; sessions split by gap; check-out grace
 - [ ] needs_review reasons: weak/single signal, office-IP only, Wi-Fi vs Teams conflict, short hours, no signal
-- [ ] Skip leave / holiday / weekend
+- [ ] Skip holiday / weekend
 - [ ] Idempotent upsert; only AUTO_* sessions ever created/modified; shadow vs official
 - [ ] Manual supersedes auto: VOID auto session (SUPERSEDED_BY_MANUAL), flag day, audit
-- [ ] Tests: office day, WFH day, lunch gap, forgot-to-disconnect, no signals, leave day, manual override
+- [ ] Tests: office day, WFH day, lunch gap, forgot-to-disconnect, no signals, holiday, manual override
       (incl. manual 10:00 after auto 09:35), IST boundaries, idempotent reruns
 
 ## Phase 3 – Wi-Fi ingestion

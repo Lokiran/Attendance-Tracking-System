@@ -23,6 +23,7 @@ def test_overview_snapshot_categories_are_exclusive(client, frozen, org, db):
     # today = Tue 10 Mar 12:00 IST
     add_session(db, org.rahul, datetime(2026, 3, 10, 4, 0, tzinfo=UTC), None, SessionStatus.OPEN)   # present
     add_session(db, org.sneha, datetime(2026, 3, 10, 3, 0, tzinfo=UTC), datetime(2026, 3, 10, 5, 0, tzinfo=UTC))
+    # A row left in the legacy leave table (feature removed) must not change anyone's status.
     db.add(LeaveRecord(employee_id=org.arjun.id, start_date=datetime(2026, 3, 10).date(),
                        end_date=datetime(2026, 3, 10).date(), leave_type=LeaveType.SICK, status=RequestStatus.APPROVED))
     db.commit()
@@ -30,9 +31,10 @@ def test_overview_snapshot_categories_are_exclusive(client, frozen, org, db):
     o = client.get("/api/dashboard/overview", params=RANGE).json()
     snap = o["snapshot"]
     assert o["headcount"] == 7
-    assert snap["present"] == 2 and snap["on_leave"] == 1 and snap["not_checked_in"] == 4
+    assert "on_leave" not in snap and "pending_leave" not in o
+    assert snap["present"] == 2 and snap["not_checked_in"] == 5
     assert snap["checked_in_now"] == 1
-    assert sum(snap[k] for k in ("present", "absent", "not_checked_in", "on_leave", "incomplete", "off")) == 7
+    assert sum(snap[k] for k in ("present", "absent", "not_checked_in", "incomplete", "off")) == 7
 
 
 def test_untracked_accounts_excluded_from_stats(client, org, db):

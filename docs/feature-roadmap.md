@@ -39,14 +39,10 @@ I ask before any destructive database change or any new dependency that needs ap
 | 2 Rules | Schedules (employee / department / org) | [x] |
 | | Holidays and weekly offs | [x] |
 | | Late with grace period | [x] |
-| | **Early-leave and half-day rules** | [ ] |
+| | **Early check-out and half-day rules** | [ ] |
 | | **Overtime calculation** | [ ] |
 | | Net vs elapsed hours | [x] breaks and multiple sessions |
-| 3 Leave | Leave types | [~] Annual, Sick, Casual, Unpaid, Other (no "Paid" naming, no per-type settings) |
-| | **Balances and accrual** | [ ] |
-| | Apply / approve / reject | [x] |
-| | Leave never shown as Absent | [x] |
-| | **Half-day and hourly leave** | [ ] |
+| 3 Leave | Removed on 2026-11-05 by decision: attendance is office presence measured against shift hours | n/a |
 | 4 Corrections | Request, approve/reject, original kept | [x] |
 | | Cutoff window | [~] configurable window (default 30 days); **payroll-lock cutoff missing** |
 | 5 Roles | Employee, Manager, Admin + manager scope | [x] |
@@ -81,9 +77,9 @@ before auto-close and notifications; the payroll lock is needed before the payro
 | F0 ✅ | Quality gate: CI on GitHub with PostgreSQL | Every later feature gets tested on the real database automatically | — |
 | F1 | HR role | Later screens (balances, payroll, reports) are HR's | — |
 | F2 | Work location on check-in | Small, visible, used by reports later | — |
-| F3 | Early-leave and half-day rules | Changes day status; overtime and payroll build on it | HR rules |
+| F3 | Early check-out and half-day rules | Changes day status; overtime and payroll build on it | HR rules |
 | F4 | Overtime calculation | Needed for payroll summary | HR rules |
-| F5 | Leave balances, accrual, half-day and hourly leave | Payroll needs leave-without-pay days | HR leave policy |
+| ~~F5~~ | ~~Leave balances, accrual, half-day and hourly leave~~ | Dropped: leave removed from the product | — |
 | F6 | Background worker + missed check-out auto-close | Worker is reused by notifications and retention | — |
 | F7 | Payroll lock for closed periods | Freezes a month before payroll reports | — |
 | F8 | Reports: Excel / PDF, overtime and payroll summary | Uses F3–F7 | approval for 2 libraries |
@@ -105,8 +101,8 @@ before auto-close and notifications; the payroll lock is needed before the payro
 - **Done when:** the workflow is green on a pull request, with 0 skipped tests.
 
 ### F1 — HR role  [ ]
-- **Decisions:** what HR can do vs Admin. Proposal: **HR** = org-wide attendance, leave and correction approvals,
-  reports, holidays, schedules, policies, leave balances, payroll lock. **Admin** = user accounts, roles, departments,
+- **Decisions:** what HR can do vs Admin. Proposal: **HR** = org-wide attendance and correction approvals,
+  reports, holidays, schedules, policies, payroll lock. **Admin** = user accounts, roles, departments,
   system settings, audit log. Can HR see the audit log? Can HR create users?
 - **DB:** add `HR` to the role values (constraint widening, like migration 0002).
 - **Backend:** a permission map (one place that says which role can do what) replacing scattered role checks;
@@ -123,8 +119,8 @@ before auto-close and notifications; the payroll lock is needed before the payro
 - **Frontend:** location picker on the Check-in button; location shown in history, calendar day details, team table.
 - **Done when:** a check-in records its location and it shows everywhere attendance is shown.
 
-### F3 — Early-leave and half-day rules  [ ]
-- **Decisions:** early leave = last check-out earlier than shift end minus grace? Half day = net hours below X
+### F3 — Early check-out and half-day rules  [ ]
+- **Decisions:** early check-out = last check-out earlier than shift end minus grace? Half day = net hours below X
   (e.g. 4 h) but above the absent threshold? Do repeated lates convert to a half day (e.g. 3 lates = ½ day)?
 - **DB:** policy columns (`early_leave_grace_minutes`, `half_day_min_minutes`, optional late-conversion rule).
 - **Backend:** new day status `HALF_DAY` and exception `EARLY_LEAVE` in the rules engine (single source of truth);
@@ -140,14 +136,10 @@ before auto-close and notifications; the payroll lock is needed before the payro
 - **Frontend:** overtime card and column, approval list if chosen.
 - **Done when:** overtime appears in summaries and reports and matches hand-calculated examples.
 
-### F5 — Leave balances, accrual, half-day and hourly leave  [ ]
-- **Decisions:** leave types and yearly quota per type (rename Annual → Paid?); leave year (Jan–Dec or Apr–Mar);
-  accrual monthly or upfront; carry-forward cap; can balance go negative; half-day (AM/PM) and hourly units.
-- **DB:** `leave_types` (configurable), `leave_balances` (per person, type, year), `leave_ledger`
-  (every credit/debit — balances are never edited directly); `leave_records` gains unit (full / half / hours).
-- **Backend:** accrual job, debit on approval, credit back on cancellation, balance checks on request.
-- **Frontend:** "My balances" card, balance shown when requesting, HR balance-adjustment screen.
-- **Done when:** a year of accrual + requests + cancellations reconciles to the ledger.
+### F5 — Leave  [dropped 2026-11-05]
+- Leave was removed from the product: no applying, approving or recording leave. Attendance is office
+  presence (check-in / check-out) measured against the shift's required hours.
+- The old `leave_records` table is still in the database, unused, until a migration to drop it is approved.
 
 ### F6 — Background worker + missed check-out auto-close  [ ]
 - **Decisions:** when to auto-close (at shift end, or at maximum session length)? Should an auto-closed session
@@ -162,13 +154,13 @@ before auto-close and notifications; the payroll lock is needed before the payro
 ### F7 — Payroll lock  [ ]
 - **Decisions:** who locks (HR); lock by calendar month; unlock allowed with a reason?
 - **DB:** `payroll_periods` (month, locked_at, locked_by, unlock history).
-- **Backend:** every write that touches a locked date (check-in edits, corrections, leave approvals, schedule and
+- **Backend:** every write that touches a locked date (check-in edits, corrections, schedule and
   holiday changes affecting it) is refused with a clear message; corrections cutoff = earlier of window or lock.
 - **Frontend:** HR "Payroll periods" screen; lock badges on calendars and requests.
 - **Done when:** nothing can change attendance inside a locked month, and every lock/unlock is audited.
 
 ### F8 — Reports: Excel / PDF, overtime and payroll summary  [ ]
-- **Decisions:** payroll summary columns (present, half days, paid leave by type, leave without pay, overtime,
+- **Decisions:** payroll summary columns (present, half days, absent days, shift hours vs worked hours, overtime,
   late count…). Approval for two Python libraries: `openpyxl` (Excel) and `reportlab` (PDF).
 - **Backend:** one report builder, three outputs (CSV, Excel, PDF); payroll summary only for locked months.
 - **Frontend:** format picker on the Reports page.

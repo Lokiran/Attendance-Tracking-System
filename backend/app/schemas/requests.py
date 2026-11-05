@@ -2,7 +2,7 @@ from datetime import date, datetime, time
 
 from pydantic import BaseModel, Field
 
-from app.models import CorrectionType, LeaveType, RequestStatus
+from app.models import CorrectionType, RequestStatus
 from app.schemas.common import ORMModel, UserBrief
 
 
@@ -36,29 +36,4 @@ class CorrectionOut(ORMModel):
     reviewer_comment: str | None
     reviewed_at: datetime | None
     resulting_session_id: int | None
-    created_at: datetime
-
-
-class LeaveCreate(BaseModel):
-    start_date: date
-    end_date: date
-    leave_type: LeaveType
-    reason: str | None = Field(None, max_length=1000)
-
-
-class LeaveRecordCreate(LeaveCreate):
-    employee_id: int
-
-
-class LeaveOut(ORMModel):
-    id: int
-    employee: UserBrief
-    start_date: date
-    end_date: date
-    leave_type: LeaveType
-    status: RequestStatus
-    reason: str | None
-    reviewed_by: UserBrief | None
-    reviewed_at: datetime | None
-    reviewer_comment: str | None
     created_at: datetime

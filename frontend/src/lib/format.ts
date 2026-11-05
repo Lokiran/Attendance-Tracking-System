@@ -68,7 +68,6 @@ export function formatPercent(p: number | null | undefined): string {
 export const STATUS_LABEL: Record<DayStatus, string> = {
   PRESENT: "Present",
   ABSENT: "Absent",
-  ON_LEAVE: "On leave",
   HOLIDAY: "Holiday",
   WEEKEND: "Weekend",
   INCOMPLETE: "Incomplete",

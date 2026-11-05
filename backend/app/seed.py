@@ -1,7 +1,7 @@
 """Repeatable demo data for local development (fictional company "Nexa Technologies").
 
 * Users are upserted by email, so re-running never duplicates people.
-* Attendance, leave and corrections are generated only for demo users that have no attendance
+* Attendance and corrections are generated only for demo users that have no attendance
   yet, unless ``reset_demo`` is set (which regenerates them relative to today).
 * Passwords come from SEED_ADMIN_PASSWORD / SEED_DEMO_PASSWORD; nothing is hard-coded.
 """
@@ -25,9 +25,6 @@ from app.models import (
     AttendanceSession,
     Department,
     Holiday,
-    LeaveRecord,
-    LeaveType,
-    RequestStatus,
     Role,
     SessionSource,
     SessionStatus,
@@ -173,22 +170,7 @@ def _ensure_holidays(db: Session, today: date) -> None:
     db.flush()
 
 
-# code -> [(days_ago_start, length, type, status)]; a negative days_ago is in the future.
-LEAVE_PLAN: dict[str, list[tuple[int, int, LeaveType, RequestStatus]]] = {
-        "EMP001": [(40, 2, LeaveType.ANNUAL, RequestStatus.APPROVED)],
-        "EMP002": [(22, 1, LeaveType.SICK, RequestStatus.APPROVED), (-9, 3, LeaveType.ANNUAL, RequestStatus.PENDING)],
-        "EMP003": [(12, 3, LeaveType.ANNUAL, RequestStatus.APPROVED), (5, 1, LeaveType.CASUAL, RequestStatus.REJECTED)],
-        "EMP004": [(0, 1, LeaveType.CASUAL, RequestStatus.APPROVED)],
-        "EMP005": [(55, 4, LeaveType.ANNUAL, RequestStatus.APPROVED)],
-        "EMP006": [(8, 2, LeaveType.SICK, RequestStatus.APPROVED), (-20, 2, LeaveType.ANNUAL, RequestStatus.PENDING)],
-        "EMP007": [(30, 2, LeaveType.ANNUAL, RequestStatus.APPROVED)],
-        "MGR001": [(26, 1, LeaveType.CASUAL, RequestStatus.APPROVED)],
-        "MGR002": [(60, 2, LeaveType.ANNUAL, RequestStatus.APPROVED)],
-}
-
-
-def _generate_attendance(db: Session, users: dict[str, User], reviewer_for: dict[int, User], today: date,
-                         now: datetime) -> int:
+def _generate_attendance(db: Session, users: dict[str, User], today: date, now: datetime) -> int:
     tz = office_tz()
     schedules = [schedule_data(s) for s in db.scalars(select(WorkSchedule))]
     all_holidays = {(h.holiday_date, h.department_id) for h in db.scalars(select(Holiday))}
@@ -199,22 +181,6 @@ def _generate_attendance(db: Session, users: dict[str, User], reviewer_for: dict
         if db.scalar(select(AttendanceSession.id).where(AttendanceSession.employee_id == u.id).limit(1)):
             continue  # already has attendance: keep it
         rng = random.Random(f"nexa-{code}")
-        leave_days: set[date] = set()
-        for ago, length, ltype, status in LEAVE_PLAN.get(code, []):
-            start = today - timedelta(days=ago)
-            end = start + timedelta(days=length - 1)
-            reviewer = reviewer_for.get(u.id)
-            db.add(LeaveRecord(
-                employee_id=u.id, start_date=start, end_date=end, leave_type=ltype, status=status,
-                reason={LeaveType.SICK: "Unwell", LeaveType.ANNUAL: "Family vacation",
-                        LeaveType.CASUAL: "Personal errand"}.get(ltype, "Personal"),
-                reviewed_by_id=reviewer.id if reviewer and status != RequestStatus.PENDING else None,
-                reviewed_at=now - timedelta(days=max(ago, 0) + 2) if status != RequestStatus.PENDING else None,
-                reviewer_comment="Clashes with release week" if status == RequestStatus.REJECTED else None,
-            ))
-            if status == RequestStatus.APPROVED:
-                leave_days.update(start + timedelta(days=i) for i in range(length))
-
         emp = employee_data(u)
         start_day = max(today - timedelta(days=HISTORY_DAYS), u.date_joined)
         d = start_day
@@ -222,7 +188,7 @@ def _generate_attendance(db: Session, users: dict[str, User], reviewer_for: dict
             sched = resolve_schedule(schedules, emp, d)
             is_holiday = (d, None) in all_holidays or (d, u.department_id) in all_holidays
             workday = sched is not None and d.isoweekday() in sched.working_days and not is_holiday
-            if d in leave_days or sched is None:
+            if sched is None:
                 d += timedelta(days=1)
                 continue
             if not workday:
@@ -318,10 +284,7 @@ def _demo_corrections(db: Session, users: dict[str, User], today: date) -> None:
             hi = local_to_utc(d + timedelta(days=1), time(0), tz)
             if db.scalar(select(AttendanceSession.id).where(
                     AttendanceSession.employee_id == emp.id, AttendanceSession.check_in_at >= lo,
-                    AttendanceSession.check_in_at < hi)) is None and \
-                    db.scalar(select(LeaveRecord.id).where(LeaveRecord.employee_id == emp.id,
-                                                           LeaveRecord.start_date <= d,
-                                                           LeaveRecord.end_date >= d)) is None:
+                    AttendanceSession.check_in_at < hi)) is None:
                 return d
         return None
 
@@ -360,7 +323,6 @@ def _reset_demo(db: Session, users: dict[str, User]) -> None:
     ids = [u.id for u in users.values()]
     db.execute(delete(AttendanceCorrection).where(AttendanceCorrection.employee_id.in_(ids)))
     db.execute(delete(AttendanceSession).where(AttendanceSession.employee_id.in_(ids)))
-    db.execute(delete(LeaveRecord).where(LeaveRecord.employee_id.in_(ids)))
     db.flush()
 
 
@@ -384,8 +346,7 @@ def run(db: Session, *, reset_demo: bool = False, reset_passwords: bool = False)
         _reset_demo(db, users)
     _ensure_schedules(db, users)
     _ensure_holidays(db, today)
-    reviewer_for = {u.id: db.get(User, u.manager_id) for u in users.values() if u.manager_id}
-    created = _generate_attendance(db, users, reviewer_for, today, now)
+    created = _generate_attendance(db, users, today, now)
     db.commit()
     _demo_corrections(db, users, today)
     db.commit()

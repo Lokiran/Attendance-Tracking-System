@@ -86,4 +86,3 @@ def test_employee_export_restricted_to_self(client, org):
 def test_employee_cannot_list_others_requests(client, org):
     login(client, org.rahul)
     assert client.get("/api/corrections", params={"scope": "review"}).status_code == 403
-    assert client.get("/api/leaves", params={"scope": "review"}).status_code == 403

@@ -184,7 +184,6 @@ export function StatusDistributionChart({ data, onSelect }: {
 
 export const TEAM_STACK = [
   { key: "present", label: "Present", color: "var(--st-present)" },
-  { key: "on_leave", label: "On leave", color: "var(--st-leave)" },
   { key: "incomplete", label: "Incomplete", color: "var(--st-incomplete)" },
   { key: "absent", label: "Absent", color: "var(--st-absent)" },
 ] as const;

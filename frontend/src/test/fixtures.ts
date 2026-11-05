@@ -10,7 +10,6 @@ export const summary: Summary = {
   present_expected_days: 16,
   extra_present_days: 0,
   absent_days: 1,
-  leave_days: 1,
   holiday_days: 0,
   weekend_days: 7,
   not_scheduled_days: 0,
@@ -41,7 +40,6 @@ export function day(date: string, overrides: Partial<DayRecord> = {}): DayRecord
     has_active_session: false,
     unresolved_sessions: 0,
     holiday_name: null,
-    leave_type: null,
     exceptions: [],
     ...overrides,
   };
@@ -85,7 +83,6 @@ export const period = {
   present_expected_days: 36,
   present_days: 36,
   absent_days: 2,
-  leave_days: 1,
   incomplete_days: 1,
   late_days: 3,
   unresolved_sessions: 1,
@@ -103,10 +100,9 @@ export const overview: Overview = {
   start: "2026-10-01",
   end: "2026-10-27",
   headcount: 3,
-  snapshot: { present: 2, absent: 0, not_checked_in: 1, on_leave: 0, incomplete: 0, off: 0, checked_in_now: 1 },
+  snapshot: { present: 2, absent: 0, not_checked_in: 1, incomplete: 0, off: 0, checked_in_now: 1 },
   period,
   pending_corrections: 1,
-  pending_leave: 0,
 };
 
 export function row(id: number, name: string, overrides: Partial<EmployeeRow> = {}): EmployeeRow {

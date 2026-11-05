@@ -52,20 +52,17 @@ Evaluated for each date up to today (future dates are never evaluated), first ma
    active session → `PRESENT`. If `count_incomplete_as_present` is on, a day with only
    unresolved sessions also counts.
 3. Unresolved session(s) and not present → `INCOMPLETE`
-4. Scheduled working day, not a holiday, not on approved leave:
+4. Scheduled working day, not a holiday:
    today → `NOT_YET_CHECKED_IN`; past → `ABSENT`
 5. Holiday on a working day → `HOLIDAY`
-6. Approved leave on a working day → `ON_LEAVE`
-7. Non-working day of the schedule → `WEEKEND`; no schedule → `NOT_SCHEDULED`
+6. Non-working day of the schedule → `WEEKEND`; no schedule → `NOT_SCHEDULED`
 
-Only **approved** leave counts. Pending or rejected leave has no effect, so the day is absent
-unless the person attended.
+There is no leave. Attendance is office presence only: a scheduled working day without a
+check-in is absent, and worked hours are measured against the shift's required hours.
 
 ## Expected days and metrics
 
-A day is **expected** when it is a scheduled working day, not a holiday, and either:
-* not on approved leave, or
-* on approved leave but the person attended anyway (they are then counted as present).
+A day is **expected** when it is a scheduled working day (of the person's shift) and not a holiday.
 
 Today is expected only once the person is present. `NOT_YET_CHECKED_IN` is never a penalty.
 
@@ -73,11 +70,10 @@ Today is expected only once the person is present. `NOT_YET_CHECKED_IN` is never
 |---|---|
 | Days present | Days with status `PRESENT` (includes extra days worked on weekends/holidays, reported separately as *extra days*) |
 | Days absent | Days with status `ABSENT` |
-| Leave days | Days with status `ON_LEAVE` |
 | Net office hours | Sum of `net_minutes` of `COMPLETED` sessions in the period |
 | Average per attended day | Net minutes ÷ number of `PRESENT` days with net minutes > 0 |
 | Attendance % | Present expected days ÷ expected days × 100, shown as "—" when there are no expected days (never divides by zero) |
-| Required hours | Sum of the schedule's required minutes over expected days |
+| Required (shift) hours | Sum of the shift's required minutes over expected days |
 | Variance | Net minutes − required minutes (presence time, not "productive" time) |
 
 Exceptions flagged per day: `MISSING_CHECKOUT`, `LATE_ARRIVAL` (first check-in later than
@@ -87,7 +83,7 @@ schedule start + `late_grace_minutes`), `SHORT_HOURS` (finished present day belo
 ## Team snapshots
 
 Manager and admin "today" cards put each person in **exactly one** category from their day
-status: present / absent / not checked in / on leave / incomplete / off. The categories
+status: present / absent / not checked in / incomplete / off. The categories
 always add up to the headcount. Accounts with `attendance_tracked = false` (e.g. the system
 administrator) are excluded from statistics.
 

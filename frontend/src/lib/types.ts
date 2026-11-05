@@ -4,7 +4,6 @@ export type Role = "EMPLOYEE" | "MANAGER" | "ADMIN";
 export type DayStatus =
   | "PRESENT"
   | "ABSENT"
-  | "ON_LEAVE"
   | "HOLIDAY"
   | "WEEKEND"
   | "INCOMPLETE"
@@ -12,7 +11,6 @@ export type DayStatus =
   | "NOT_SCHEDULED";
 export type SessionStatus = "OPEN" | "COMPLETED" | "MISSING_CHECKOUT" | "VOIDED";
 export type RequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
-export type LeaveType = "ANNUAL" | "SICK" | "CASUAL" | "UNPAID" | "OTHER";
 
 export interface Page<T> {
   items: T[];
@@ -77,7 +75,6 @@ export interface DayRecord {
   has_active_session: boolean;
   unresolved_sessions: number;
   holiday_name: string | null;
-  leave_type: string | null;
   exceptions: string[];
 }
 
@@ -89,7 +86,6 @@ export interface Summary {
   present_expected_days: number;
   extra_present_days: number;
   absent_days: number;
-  leave_days: number;
   holiday_days: number;
   weekend_days: number;
   not_scheduled_days: number;
@@ -136,7 +132,6 @@ export interface TrendBucket {
   present_expected: number;
   present: number;
   absent: number;
-  on_leave: number;
   incomplete: number;
   net_minutes: number;
   required_minutes: number;
@@ -157,7 +152,6 @@ export interface Snapshot {
   present: number;
   absent: number;
   not_checked_in: number;
-  on_leave: number;
   incomplete: number;
   off: number;
   checked_in_now: number;
@@ -167,7 +161,6 @@ export interface PeriodStats {
   present_expected_days: number;
   present_days: number;
   absent_days: number;
-  leave_days: number;
   incomplete_days: number;
   late_days: number;
   unresolved_sessions: number;
@@ -187,7 +180,6 @@ export interface Overview {
   snapshot: Snapshot;
   period: PeriodStats;
   pending_corrections: number;
-  pending_leave: number;
 }
 
 export interface EmployeeRow {
@@ -284,20 +276,6 @@ export interface Correction {
   reviewer_comment: string | null;
   reviewed_at: string | null;
   resulting_session_id: number | null;
-  created_at: string;
-}
-
-export interface Leave {
-  id: number;
-  employee: UserBrief;
-  start_date: string;
-  end_date: string;
-  leave_type: LeaveType;
-  status: RequestStatus;
-  reason: string | null;
-  reviewed_by: UserBrief | null;
-  reviewed_at: string | null;
-  reviewer_comment: string | null;
   created_at: string;
 }
 

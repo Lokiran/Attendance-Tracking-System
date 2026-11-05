@@ -118,7 +118,7 @@ def main() -> int:
     ov = mgr.get("/api/dashboard/overview", start=month_start, end=today).json()
     snap = ov["snapshot"]
     check("snapshot categories sum to team size",
-          sum(snap[k] for k in ("present", "absent", "not_checked_in", "on_leave", "incomplete", "off")) == ov["headcount"])
+          sum(snap[k] for k in ("present", "absent", "not_checked_in", "incomplete", "off")) == ov["headcount"])
     pending = mgr.get("/api/corrections", scope="review", status="PENDING").json()
     check("manager sees pending corrections", pending["total"] >= 1, str(pending)[:200])
 

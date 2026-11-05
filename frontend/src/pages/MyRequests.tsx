@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { CalendarPlus, ClipboardPlus } from "lucide-react";
+import { ClipboardPlus } from "lucide-react";
 import { useState } from "react";
 
-import { CorrectionFormModal, LeaveFormModal } from "@/components/attendance/RequestForms";
-import { CorrectionsList, LeaveList } from "@/components/attendance/RequestLists";
+import { CorrectionFormModal } from "@/components/attendance/RequestForms";
+import { CorrectionsList } from "@/components/attendance/RequestLists";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -16,7 +16,6 @@ import type { Holiday } from "@/lib/types";
 
 export function MyRequests() {
   const [correction, setCorrection] = useState(false);
-  const [leave, setLeave] = useState(false);
   const today = todayInOffice();
   const holidays = useQuery({
     queryKey: ["holidays", today],
@@ -25,23 +24,17 @@ export function MyRequests() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Requests & leave"
-        description="Ask for attendance corrections, request leave and track their status."
+        title="My requests"
+        description="Fix a missed check-in or check-out and track the status of your correction requests."
         actions={
-          <>
-            <Button variant="secondary" icon={<ClipboardPlus className="size-4" />} onClick={() => setCorrection(true)}>
-              Add missing attendance
-            </Button>
-            <Button icon={<CalendarPlus className="size-4" />} onClick={() => setLeave(true)}>
-              Request leave
-            </Button>
-          </>
+          <Button icon={<ClipboardPlus className="size-4" />} onClick={() => setCorrection(true)}>
+            Add missing attendance
+          </Button>
         }
       />
-      <CorrectionsList scope="mine" title="Correction requests" />
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <LeaveList scope="mine" title="Leave" />
+          <CorrectionsList scope="mine" title="Correction requests" />
         </div>
         <Card>
           <CardHeader title="Holidays" subtitle="Company and department holidays that apply to you" />
@@ -64,7 +57,6 @@ export function MyRequests() {
         </Card>
       </div>
       <CorrectionFormModal open={correction} onClose={() => setCorrection(false)} date={null} sessionId={null} />
-      <LeaveFormModal open={leave} onClose={() => setLeave(false)} />
     </div>
   );
 }

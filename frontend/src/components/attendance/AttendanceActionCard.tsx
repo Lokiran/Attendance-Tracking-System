@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarPlus, ClipboardPen, ListChecks, LogIn, LogOut } from "lucide-react";
+import { AlertTriangle, ClipboardPen, ListChecks, LogIn, LogOut } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
@@ -53,11 +53,10 @@ function Tile({ label, value, hint, children }: { label: string; value: ReactNod
   );
 }
 
-export function AttendanceActionCard({ user, onRequestCorrection, onRequestLeave, onFixPastDay }: {
+export function AttendanceActionCard({ user, onRequestCorrection, onFixPastDay }: {
   /** When given, the panel greets the person and shows their ID, department and manager. */
   user?: Profile;
   onRequestCorrection?: (date: string, sessionId: number) => void;
-  onRequestLeave?: () => void;
   onFixPastDay?: () => void;
 }) {
   const status = useCurrentStatus();
@@ -157,12 +156,12 @@ export function AttendanceActionCard({ user, onRequestCorrection, onRequestLeave
         <Tile
           label="Worked today"
           value={formatMinutes(worked)}
-          hint={target ? `of ${formatMinutes(target)} target${active ? " · includes current session" : ""}` : undefined}
+          hint={target ? `of ${formatMinutes(target)} shift hours${active ? " · includes current session" : ""}` : undefined}
         >
           {target > 0 && (
             <div
               role="progressbar"
-              aria-label="Progress toward today's target"
+              aria-label="Progress toward today's shift hours"
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={progress}
@@ -197,18 +196,11 @@ export function AttendanceActionCard({ user, onRequestCorrection, onRequestLeave
         </div>
       )}
 
-      {(onRequestLeave || onFixPastDay) && (
+      {onFixPastDay && (
         <div className="flex flex-wrap items-center gap-1 border-t border-line px-3 py-2 sm:px-4">
-          {onRequestLeave && (
-            <Button variant="ghost" size="sm" icon={<CalendarPlus className="size-4" />} onClick={onRequestLeave}>
-              Request leave
-            </Button>
-          )}
-          {onFixPastDay && (
-            <Button variant="ghost" size="sm" icon={<ClipboardPen className="size-4" />} onClick={onFixPastDay}>
-              Fix a past day
-            </Button>
-          )}
+          <Button variant="ghost" size="sm" icon={<ClipboardPen className="size-4" />} onClick={onFixPastDay}>
+            Fix a past day
+          </Button>
           <Link
             to="/my/requests"
             className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"

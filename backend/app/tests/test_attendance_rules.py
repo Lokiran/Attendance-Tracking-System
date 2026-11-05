@@ -13,7 +13,6 @@ from app.services.attendance_rules import (
     EmployeeData,
     HolidayData,
     InvalidSessionTimes,
-    LeaveData,
     PolicyData,
     ScheduleData,
     SessionData,
@@ -45,10 +44,10 @@ def open_s(d: date, h, m=0, status=SessionStatus.OPEN) -> SessionData:
 
 
 def records(start, end, sessions=(), *, today=date(2026, 3, 13), now=None, schedules=(WEEKDAYS,), holidays=(),
-            leaves=(), policy=POLICY, employee=EMP):
+            policy=POLICY, employee=EMP):
     now = now or at(today, 20)
     return build_day_records(employee, start, end, today=today, now=now, tz=IST, sessions=list(sessions),
-                             schedules=list(schedules), holidays=list(holidays), leaves=list(leaves), policy=policy)
+                             schedules=list(schedules), holidays=list(holidays), policy=policy)
 
 
 MON, TUE, WED, THU, FRI, SAT, SUN = (date(2026, 3, 9) + timedelta(days=i) for i in range(7))
@@ -103,18 +102,15 @@ def test_absent_weekend_and_percentage():
     assert s.required_minutes == 5 * 480 and s.variance_minutes == 960 - 2400
 
 
-def test_approved_leave_is_not_absence_and_excluded_from_denominator():
-    leave = LeaveData(1, TUE, WED, "ANNUAL")
-    recs = records(MON, WED, [done(MON, 9, 30, 18, 30, 60)], leaves=[leave])
-    assert [r.status for r in recs] == [DayStatus.PRESENT, DayStatus.ON_LEAVE, DayStatus.ON_LEAVE]
-    s = summarize(recs, MON, WED)
-    assert s.leave_days == 2 and s.absent_days == 0 and s.expected_days == 1
-    assert s.attendance_percentage == 100.0 and s.required_minutes == 480
-
-
-def test_attending_on_leave_day_counts_as_present():
-    recs = records(TUE, TUE, [done(TUE, 9, 30, 18, 30)], leaves=[LeaveData(1, TUE, TUE, "CASUAL")])
-    assert recs[0].status == DayStatus.PRESENT and recs[0].expected
+def test_hours_are_measured_against_the_shift():
+    """Required minutes come from the shift; worked minutes come only from office sessions."""
+    short_shift = ScheduleData(2, None, None, time(9, 0), time(15, 0), 360, frozenset({1, 2, 3, 4, 5}),
+                               date(2024, 1, 1), None)
+    recs = records(MON, TUE, [done(MON, 9, 0, 15, 0), done(TUE, 9, 0, 14, 0)], schedules=[short_shift])
+    assert [r.required_minutes for r in recs] == [360, 360]
+    assert EXC_SHORT_HOURS not in recs[0].exceptions and EXC_SHORT_HOURS in recs[1].exceptions
+    s = summarize(recs, MON, TUE)
+    assert s.net_minutes == 660 and s.required_minutes == 720 and s.variance_minutes == -60
 
 
 def test_holiday_excluded_and_department_specific_holiday():
@@ -210,7 +206,7 @@ def test_dst_zone_day_boundaries():
     sched = ScheduleData(1, None, None, time(9), time(17), 480, frozenset(range(1, 8)), date(2024, 1, 1), None)
     sess = SessionData(1, 1, a, b, 0, 120, SessionStatus.COMPLETED)
     recs = build_day_records(EMP, d, d, today=date(2026, 3, 9), now=b + timedelta(days=1), tz=ny,
-                             sessions=[sess], schedules=[sched], holidays=[], leaves=[], policy=POLICY)
+                             sessions=[sess], schedules=[sched], holidays=[], policy=POLICY)
     assert recs[0].date == d and recs[0].net_minutes == 120
 
 

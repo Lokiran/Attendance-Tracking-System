@@ -17,6 +17,10 @@ def _status_col():
 
 
 class LeaveRecord(TimestampMixin, Base):
+    """Legacy table from the retired leave feature. Nothing in the app reads or writes it any more;
+    the mapping stays so the schema matches the migrations and existing rows are not dropped
+    without an explicit, approved migration."""
+
     __tablename__ = "leave_records"
     __table_args__ = (
         CheckConstraint("end_date >= start_date", name="date_order"),

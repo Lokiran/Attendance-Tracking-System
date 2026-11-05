@@ -10,7 +10,6 @@ class Snapshot(BaseModel):
     present: int
     absent: int
     not_checked_in: int
-    on_leave: int
     incomplete: int
     off: int
     checked_in_now: int
@@ -21,7 +20,6 @@ class PeriodStats(BaseModel):
     present_expected_days: int
     present_days: int
     absent_days: int
-    leave_days: int
     incomplete_days: int
     late_days: int
     unresolved_sessions: int
@@ -42,7 +40,6 @@ class OverviewOut(BaseModel):
     snapshot: Snapshot
     period: PeriodStats
     pending_corrections: int
-    pending_leave: int
 
 
 class RowDay(BaseModel):
@@ -85,7 +82,6 @@ class TrendBucket(BaseModel):
     present_expected: int
     present: int
     absent: int
-    on_leave: int
     incomplete: int
     net_minutes: int
     required_minutes: int

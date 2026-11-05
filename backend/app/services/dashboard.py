@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core import clock
 from app.core.timeutil import local_date, office_tz
-from app.models import AttendanceCorrection, DayStatus, Department, LeaveRecord, RequestStatus, Role, User
+from app.models import AttendanceCorrection, DayStatus, Department, RequestStatus, Role, User
 from app.services.attendance_data import compute_records
 from app.services.attendance_rules import (
     EXC_LATE_ARRIVAL,
@@ -22,10 +22,10 @@ from app.services.attendance_rules import (
 )
 from app.services.scope import resolve_scope
 
-SNAPSHOT_KEYS = ("present", "absent", "not_checked_in", "on_leave", "incomplete", "off")
+SNAPSHOT_KEYS = ("present", "absent", "not_checked_in", "incomplete", "off")
 _SNAPSHOT_OF = {
     DayStatus.PRESENT: "present", DayStatus.ABSENT: "absent", DayStatus.NOT_YET_CHECKED_IN: "not_checked_in",
-    DayStatus.ON_LEAVE: "on_leave", DayStatus.INCOMPLETE: "incomplete", DayStatus.HOLIDAY: "off",
+    DayStatus.INCOMPLETE: "incomplete", DayStatus.HOLIDAY: "off",
     DayStatus.WEEKEND: "off", DayStatus.NOT_SCHEDULED: "off",
 }
 
@@ -47,7 +47,6 @@ def aggregate(summaries: list[Summary]) -> dict:
         "present_expected_days": present_expected,
         "present_days": sum(s.present_days for s in summaries),
         "absent_days": sum(s.absent_days for s in summaries),
-        "leave_days": sum(s.leave_days for s in summaries),
         "incomplete_days": sum(s.incomplete_days for s in summaries),
         "late_days": sum(s.late_days for s in summaries),
         "unresolved_sessions": sum(s.unresolved_sessions for s in summaries),
@@ -84,12 +83,10 @@ def _compute(db: Session, employees: list[User], start: date, end: date, on_date
 
 def _pending_counts(db: Session, employee_ids: list[int]) -> dict:
     if not employee_ids:
-        return {"pending_corrections": 0, "pending_leave": 0}
+        return {"pending_corrections": 0}
     pc = db.scalar(select(func.count()).select_from(AttendanceCorrection).where(
         AttendanceCorrection.employee_id.in_(employee_ids), AttendanceCorrection.status == RequestStatus.PENDING))
-    pl = db.scalar(select(func.count()).select_from(LeaveRecord).where(
-        LeaveRecord.employee_id.in_(employee_ids), LeaveRecord.status == RequestStatus.PENDING))
-    return {"pending_corrections": pc, "pending_leave": pl}
+    return {"pending_corrections": pc}
 
 
 def overview(db: Session, viewer: User, scope: ScopeArgs, start: date, end: date, on_date: date) -> dict:
@@ -181,14 +178,13 @@ def bucketize(records: Iterable[DayRecord], end: date, granularity: str) -> list
         b_start, b_end, label = _bucket_key(r.date, granularity)
         b = buckets.setdefault(b_start, {
             "start": b_start, "end": min(b_end, end), "label": label, "expected": 0, "present_expected": 0,
-            "present": 0, "absent": 0, "on_leave": 0, "incomplete": 0, "net_minutes": 0, "attended": 0,
+            "present": 0, "absent": 0, "incomplete": 0, "net_minutes": 0, "attended": 0,
             "required_minutes": 0, "late": 0, "missing_checkout": 0, "short_hours": 0,
         })
         b["expected"] += int(r.expected)
         b["present_expected"] += int(r.expected and r.status == DayStatus.PRESENT)
         b["present"] += int(r.status == DayStatus.PRESENT)
         b["absent"] += int(r.status == DayStatus.ABSENT)
-        b["on_leave"] += int(r.status == DayStatus.ON_LEAVE)
         b["incomplete"] += int(r.status == DayStatus.INCOMPLETE)
         b["net_minutes"] += r.net_minutes
         b["required_minutes"] += r.required_minutes

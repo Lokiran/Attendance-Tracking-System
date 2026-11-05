@@ -4,7 +4,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { DataTable, Pagination, type Column } from "@/components/ui/DataTable";
 import { Checkbox, Select } from "@/components/ui/Fields";
 import { ExceptionTags, StatusBadge } from "@/components/ui/StatusBadge";
-import { formatDate, formatMinutes, formatTime, STATUS_LABEL, titleCase } from "@/lib/format";
+import { formatDate, formatMinutes, formatTime, STATUS_LABEL } from "@/lib/format";
 import { useEmployeeDays } from "@/lib/queries";
 import type { DayRecord, DayStatus } from "@/lib/types";
 
@@ -20,9 +20,9 @@ const COLUMNS: Column<DayRecord>[] = [
     cell: (r) => (
       <div className="space-y-1">
         <ExceptionTags codes={r.exceptions} />
-        {(r.holiday_name || r.leave_type || r.session_count > 1) && (
+        {(r.holiday_name || r.session_count > 1) && (
           <div className="text-[11px] text-ink-3">
-            {[r.holiday_name, r.leave_type && titleCase(r.leave_type) + " leave", r.session_count > 1 && r.session_count + " sessions"].filter(Boolean).join(" · ")}
+            {[r.holiday_name, r.session_count > 1 && r.session_count + " sessions"].filter(Boolean).join(" · ")}
           </div>
         )}
       </div>

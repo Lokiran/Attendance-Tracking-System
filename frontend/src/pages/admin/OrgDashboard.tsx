@@ -48,7 +48,6 @@ function Comparisons({ start, end, onDate }: { start: string; end: string; onDat
     { key: "hc", header: "People", align: "right", cell: (d) => d.headcount },
     { key: "present", header: "Present", align: "right", cell: (d) => d.snapshot.present },
     { key: "absent", header: "Absent / not in", align: "right", cell: (d) => d.snapshot.absent + d.snapshot.not_checked_in },
-    { key: "leave", header: "On leave", align: "right", cell: (d) => d.snapshot.on_leave },
     { key: "avg", header: "Avg net / day", align: "right", cell: (d) => formatMinutes(d.period.average_net_minutes) },
     { key: "pct", header: "Attendance", align: "right", cell: (d) => formatPercent(d.period.attendance_percentage) },
   ];

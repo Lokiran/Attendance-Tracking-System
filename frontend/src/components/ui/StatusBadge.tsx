@@ -6,7 +6,6 @@ import {
   CircleDashed,
   Clock,
   MinusCircle,
-  Palmtree,
   PartyPopper,
   XCircle,
   type LucideIcon,
@@ -19,7 +18,6 @@ import type { DayStatus, RequestStatus } from "@/lib/types";
 export const STATUS_META: Record<DayStatus, { color: string; icon: LucideIcon }> = {
   PRESENT: { color: "var(--st-present)", icon: CheckCircle2 },
   ABSENT: { color: "var(--st-absent)", icon: XCircle },
-  ON_LEAVE: { color: "var(--st-leave)", icon: Palmtree },
   HOLIDAY: { color: "var(--st-holiday)", icon: PartyPopper },
   WEEKEND: { color: "var(--st-off)", icon: CalendarOff },
   INCOMPLETE: { color: "var(--st-incomplete)", icon: AlertTriangle },

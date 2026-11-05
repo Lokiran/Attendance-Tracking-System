@@ -237,22 +237,25 @@ describe("today panel", () => {
     expect(greeting(new Date("2026-11-04T13:00:00Z"))).toBe("Good evening"); // 18:30 IST
   });
 
-  it("shows worked time including the running session, a target bar and plain-language summaries", async () => {
+  it("shows worked time against the shift hours, including the running session", async () => {
     mockApi({ "/auth/me": me(), ...employeeRoutes(true) });
     renderApp("/");
     expect(await screen.findByText("Reports to")).toBeInTheDocument();
-    // checked in 04:00Z, server time 06:30Z -> 2h 30m so far, against an 8h target
+    // checked in 04:00Z, server time 06:30Z -> 2h 30m so far, against an 8h shift
     expect(await screen.findByText("2h 30m")).toBeInTheDocument();
-    expect(screen.getByText(/of 8h 00m target · includes current session/)).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: /today's target/ })).toHaveAttribute("aria-valuenow", "31");
-    expect(await screen.findByText("14h 00m short of 144h 00m target")).toBeInTheDocument();
+    expect(screen.getByText(/of 8h 00m shift hours · includes current session/)).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: /today's shift hours/ })).toHaveAttribute("aria-valuenow", "31");
+    expect(await screen.findByText("14h 00m short of the shift hours")).toBeInTheDocument();
+    expect(screen.getByText("Shift hours")).toBeInTheDocument();
     expect(screen.getByText("Hours worked")).toBeInTheDocument();
   });
 
-  it("opens the leave form from the quick actions", async () => {
+  it("offers no leave option, only attendance fixes", async () => {
     mockApi({ "/auth/me": me(), ...employeeRoutes() });
     renderApp("/");
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Request leave" }));
-    expect(await screen.findByRole("dialog", { name: "Request leave" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Fix a past day" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /leave/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/leave/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "My requests" })).toBeInTheDocument();
   });
 });

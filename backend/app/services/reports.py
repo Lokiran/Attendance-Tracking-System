@@ -55,11 +55,11 @@ def employee_attendance(db: Session, viewer: User, employee_id: int, start: date
     rows = [
         (employee.employee_code, employee.full_name, r.date, r.status.value, r.first_check_in, r.last_check_out,
          _hours(r.net_minutes), _hours(r.required_minutes), r.session_count, "; ".join(r.exceptions),
-         r.holiday_name or r.leave_type or "")
+         r.holiday_name or "")
         for r in records
     ]
     header = ("Employee ID", "Name", "Date", "Status", "First check-in", "Last check-out", "Net hours",
-              "Required hours", "Sessions", "Exceptions", "Holiday / leave")
+              "Required hours", "Sessions", "Exceptions", "Holiday")
     return f"attendance_{employee.employee_code}_{start}_{end}.csv", to_csv(header, rows)
 
 
@@ -69,13 +69,13 @@ def _summary_rows(db: Session, employees: list[User], start: date, end: date):
         s = summarize(records[e.id], start, end)
         yield (e.employee_code, e.full_name, e.department.name if e.department else "",
                e.manager.full_name if e.manager else "", s.expected_days, s.present_expected_days,
-               s.extra_present_days, s.absent_days, s.leave_days, s.incomplete_days, s.late_days,
+               s.extra_present_days, s.absent_days, s.incomplete_days, s.late_days,
                _hours(s.net_minutes), _hours(s.required_minutes), _hours(s.variance_minutes),
                _hours(s.average_net_minutes), "" if s.attendance_percentage is None else s.attendance_percentage)
 
 
 SUMMARY_HEADER = ("Employee ID", "Name", "Department", "Manager", "Expected days", "Present (expected) days",
-                  "Extra days worked", "Absent days", "Leave days", "Incomplete days", "Late days", "Net hours",
+                  "Extra days worked", "Absent days", "Incomplete days", "Late days", "Net hours",
                   "Required hours", "Variance hours", "Avg net hours / day", "Attendance %")
 
 
@@ -98,10 +98,10 @@ def monthly_attendance(db: Session, viewer: User, year: int, month: int, manager
 def department_attendance(db: Session, viewer: User, start: date, end: date) -> tuple[str, str]:
     data = dashboard.department_comparison(db, viewer, start, end, end)
     header = ("Department", "Head", "Headcount", "Expected days", "Present (expected) days", "Absent days",
-              "Leave days", "Incomplete days", "Net hours", "Required hours", "Avg net hours / day", "Attendance %")
+              "Incomplete days", "Net hours", "Required hours", "Avg net hours / day", "Attendance %")
     rows = [
         (d["department_name"], d["head_name"], d["headcount"], d["period"]["expected_days"],
-         d["period"]["present_expected_days"], d["period"]["absent_days"], d["period"]["leave_days"],
+         d["period"]["present_expected_days"], d["period"]["absent_days"],
          d["period"]["incomplete_days"], _hours(d["period"]["net_minutes"]), _hours(d["period"]["required_minutes"]),
          _hours(d["period"]["average_net_minutes"]),
          "" if d["period"]["attendance_percentage"] is None else d["period"]["attendance_percentage"])

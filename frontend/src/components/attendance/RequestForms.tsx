@@ -5,13 +5,13 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/Button";
-import { Checkbox, Field, Input, Select, TextArea } from "@/components/ui/Fields";
+import { Checkbox, Field, Input, TextArea } from "@/components/ui/Fields";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { todayInOffice } from "@/lib/dates";
 import { useInvalidateAttendance } from "@/lib/queries";
-import type { Correction, Leave } from "@/lib/types";
+import type { Correction } from "@/lib/types";
 
 const time = z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM");
 
@@ -94,86 +94,6 @@ export function CorrectionFormModal({ open, onClose, date, sessionId }: {
         <div className="sm:col-span-2">
           <Field label="Reason" htmlFor="c-reason" error={errors.reason?.message} required>
             <TextArea id="c-reason" {...form.register("reason")} aria-invalid={!!errors.reason} placeholder="e.g. Forgot to check out before leaving the office" />
-          </Field>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-const LEAVE_TYPES = ["ANNUAL", "SICK", "CASUAL", "UNPAID", "OTHER"] as const;
-
-export const leaveSchema = z
-  .object({
-    start_date: z.string().min(1, "Start date is required"),
-    end_date: z.string().min(1, "End date is required"),
-    leave_type: z.enum(LEAVE_TYPES),
-    reason: z.string().max(1000).optional(),
-  })
-  .refine((v) => v.end_date >= v.start_date, { path: ["end_date"], message: "End date must be on or after the start date" });
-type LeaveValues = z.infer<typeof leaveSchema>;
-
-export function LeaveFormModal({ open, onClose, employeeId, employeeName }: {
-  open: boolean;
-  onClose: () => void;
-  /** When set, a reviewer records already-approved leave for this employee. */
-  employeeId?: number;
-  employeeName?: string;
-}) {
-  const toast = useToast();
-  const invalidate = useInvalidateAttendance();
-  const today = todayInOffice();
-  const form = useForm<LeaveValues>({ resolver: zodResolver(leaveSchema), defaultValues: { start_date: today, end_date: today, leave_type: "ANNUAL", reason: "" } });
-  useEffect(() => {
-    if (open) form.reset({ start_date: today, end_date: today, leave_type: "ANNUAL", reason: "" });
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-  const submit = useMutation({
-    mutationFn: (v: LeaveValues) =>
-      employeeId ? api.post<Leave>("/leaves/record", { ...v, employee_id: employeeId }) : api.post<Leave>("/leaves", v),
-    onSuccess: () => {
-      toast.success(employeeId ? "Approved leave recorded" : "Leave request submitted");
-      invalidate();
-      onClose();
-    },
-    onError: (e) => toast.error(e),
-  });
-  const { errors } = form.formState;
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={employeeId ? "Record leave for " + employeeName : "Request leave"}
-      description={employeeId ? "Recorded leave is approved immediately and audited." : "Only approved leave affects attendance calculations."}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" form="leave-form" loading={submit.isPending}>
-            {employeeId ? "Record leave" : "Submit request"}
-          </Button>
-        </>
-      }
-    >
-      <form id="leave-form" noValidate onSubmit={form.handleSubmit((v) => submit.mutate(v))} className="grid gap-4 sm:grid-cols-2">
-        <Field label="From" htmlFor="l-start" error={errors.start_date?.message} required>
-          <Input id="l-start" type="date" {...form.register("start_date")} aria-invalid={!!errors.start_date} />
-        </Field>
-        <Field label="To" htmlFor="l-end" error={errors.end_date?.message} required>
-          <Input id="l-end" type="date" {...form.register("end_date")} aria-invalid={!!errors.end_date} />
-        </Field>
-        <Field label="Leave type" htmlFor="l-type" required>
-          <Select id="l-type" {...form.register("leave_type")}>
-            {LEAVE_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t.charAt(0) + t.slice(1).toLowerCase()}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label="Reason (optional)" htmlFor="l-reason" error={errors.reason?.message}>
-            <TextArea id="l-reason" {...form.register("reason")} />
           </Field>
         </div>
       </form>

@@ -11,7 +11,7 @@ Status: `[x]` done · `[ ]` open · `[~]` blocked (reason given). Each item has 
 
 | Area | State |
 |---|---|
-| Features | Employee / manager / admin dashboards, check-in/out, corrections, leave, reports, audit — working |
+| Features | Employee / manager / admin dashboards, check-in/out, corrections, reports, audit — working |
 | Backend tests | 161 passed on SQLite; **26 PostgreSQL-only tests never run** |
 | Frontend tests | 21 passed (one test file); type-check and build clean |
 | Database | Verified on SQLite only; PostgreSQL install blocked on this laptop (download 403, no admin) |
@@ -62,10 +62,10 @@ Status: `[x]` done · `[ ]` open · `[~]` blocked (reason given). Each item has 
 
 ### Testing depth ("almost no bugs" lives here)
 - [ ] End-to-end browser tests in the repo (Playwright): sign-in for each role, check-in/out,
-      correction submit → approve, leave request → approve, manager scope, admin user edit, CSV export,
+      correction submit → approve, manager scope, admin user edit, CSV export,
       multi-tab sign-out. Run in CI against PostgreSQL. *Done when:* 15+ journeys green in CI.
 - [ ] Property-based tests for the attendance rules engine (`hypothesis`): random sessions, schedules,
-      leave and holidays must never produce negative hours, double-counted days, or % outside 0–100.
+      holidays must never produce negative hours, double-counted days, or % outside 0–100.
 - [ ] API contract tests: generate the TypeScript types from the OpenAPI schema so frontend and
       backend cannot silently drift.
 - [ ] Split the single frontend test file per page/component; add tests for approvals, reports,
@@ -128,7 +128,6 @@ Status: `[x]` done · `[ ]` open · `[~]` blocked (reason given). Each item has 
 
 ## P3 — After launch (improvements)
 - [ ] Automatic attendance (Wi-Fi + Teams presence) — Phases 3–9, rolled out in shadow mode first.
-- [ ] Leave balances and accrual rules.
 - [ ] Notifications (email / Teams) for approvals and missing check-outs.
 - [ ] Payroll / HRMS export integration.
 - [ ] Multi-location holiday calendars.

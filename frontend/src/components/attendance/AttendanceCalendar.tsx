@@ -11,7 +11,7 @@ import { useEmployeeDays } from "@/lib/queries";
 import type { DayRecord, DayStatus } from "@/lib/types";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const LEGEND: DayStatus[] = ["PRESENT", "ABSENT", "ON_LEAVE", "HOLIDAY", "INCOMPLETE", "WEEKEND"];
+const LEGEND: DayStatus[] = ["PRESENT", "ABSENT", "HOLIDAY", "INCOMPLETE", "WEEKEND"];
 
 export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectDay }: {
   employeeId: number;

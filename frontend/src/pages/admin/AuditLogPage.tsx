@@ -11,7 +11,7 @@ import { formatDateTime, titleCase } from "@/lib/format";
 import { qk } from "@/lib/queries";
 import type { AuditEntry, Page } from "@/lib/types";
 
-const ENTITY_TYPES = ["user", "department", "attendance_session", "attendance_correction", "leave_record", "work_schedule", "holiday", "attendance_policy", "report"];
+const ENTITY_TYPES = ["user", "department", "attendance_session", "attendance_correction", "work_schedule", "holiday", "attendance_policy", "report"];
 
 function Changes({ before, after }: { before: Record<string, unknown> | null; after: Record<string, unknown> | null }) {
   const keys = Array.from(new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]));
