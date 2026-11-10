@@ -120,7 +120,7 @@ export function useDepartmentStats(params: { start: string; end: string; on_date
   });
 }
 
-export function useManagerStats(params: { start: string; end: string; department_id?: number | null }) {
+export function useManagerStats(params: { start: string; end: string; on_date?: string; department_id?: number | null }) {
   return useQuery({
     queryKey: [...qk.dashboard, "managers", params],
     queryFn: () => api.get<ManagerStats[]>("/dashboard/managers", params as Params),

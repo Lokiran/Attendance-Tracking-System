@@ -38,6 +38,7 @@ from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import AttendancePolicy, Department, Role, User, WorkSchedule  # noqa: E402
+from app.services import attendance_data, record_cache  # noqa: E402
 
 PASSWORD = "Str0ngPassw0rd!"
 IST = get_settings().tz
@@ -95,7 +96,17 @@ def _fresh_db():
     else:
         Base.metadata.drop_all(engine)
         Base.metadata.create_all(engine)
+    # Fresh databases reuse ids and the frozen clock reuses timestamps, so cached results from one
+    # test must never be visible in the next.
+    record_cache.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _cache_every_scope(monkeypatch):
+    """Route even the small test organisations through the dashboard record cache, so every test that
+    writes and then reads attendance also proves the cache never serves stale numbers."""
+    monkeypatch.setattr(attendance_data, "CACHE_MIN_EMPLOYEES", 0)
 
 
 class FrozenClock:

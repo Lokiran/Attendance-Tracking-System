@@ -62,7 +62,7 @@ I ask before any destructive database change or any new dependency that needs ap
 | | Policy settings | [~] grace, minimums, windows; **no shift rules / retention settings** |
 | | **Payroll lock** | [ ] |
 | 10 Non-functional | Responsive, icon + label, health checks, tests + migrations | [x] |
-| | Fast dashboards | [~] paginated and indexed; computed per request (load test pending) |
+| | Fast dashboards | [x] 5,000 employees: admin page 1.3–4.4 s, manager page < 0.6 s (see docs/scaling.md) |
 | | Error logging | [~] server logs only; no error tracking |
 
 ---
@@ -201,8 +201,8 @@ before auto-close and notifications; the payroll lock is needed before the payro
 - **Done when:** a backup has been restored into a fresh database and the app works against it.
 
 ### F14 — Non-functional hardening  [ ]
-- Accessibility tests (axe) on every page; error tracking for backend and frontend; load test with
-  1,000 employees × 1 year and pre-aggregated daily totals if dashboards exceed 2 s; smaller frontend bundle.
+- Accessibility tests (axe) on every page; error tracking for backend and frontend; load test done (docs/scaling.md);
+  pre-aggregated daily totals only if year-long whole-organisation ranges become a regular need; smaller frontend bundle.
 
 ---
 

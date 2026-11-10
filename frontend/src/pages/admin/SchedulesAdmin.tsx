@@ -11,13 +11,14 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Field, Input, Select } from "@/components/ui/Fields";
 import { ConfirmDialog, Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { PersonPicker } from "@/components/ui/PersonPicker";
 import { EmptyState } from "@/components/ui/States";
 import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { todayInOffice } from "@/lib/dates";
 import { formatDate, formatMinutes } from "@/lib/format";
 import { qk, useInvalidateAttendance } from "@/lib/queries";
-import type { AdminUser, Department, Schedule } from "@/lib/types";
+import type { Department, Schedule } from "@/lib/types";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -43,7 +44,6 @@ function ScheduleModal({ schedule, open, onClose }: { schedule: Schedule | null;
   const qc = useQueryClient();
   const invalidate = useInvalidateAttendance();
   const departments = useQuery({ queryKey: ["departments"], queryFn: () => api.get<Department[]>("/departments"), enabled: open });
-  const people = useQuery({ queryKey: [...qk.admin, "users", "all-active"], queryFn: () => api.get<{ items: AdminUser[] }>("/admin/users", { is_active: true, page_size: 200 }), enabled: open });
   const form = useForm<Values>({ resolver: zodResolver(schema) });
   useEffect(() => {
     if (!open) return;
@@ -104,12 +104,21 @@ function ScheduleModal({ schedule, open, onClose }: { schedule: Schedule | null;
         </Field>
         {target !== "org" && (
           <Field label={target === "department" ? "Department" : "Employee"} htmlFor="s-tid" error={errors.target_id?.message} required>
-            <Select id="s-tid" {...form.register("target_id")} disabled={!!schedule}>
-              <option value="">Select…</option>
-              {target === "department"
-                ? departments.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)
-                : people.data?.items.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-            </Select>
+            {target === "department" ? (
+              <Select id="s-tid" {...form.register("target_id")} disabled={!!schedule}>
+                <option value="">Select…</option>
+                {departments.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </Select>
+            ) : (
+              <PersonPicker
+                id="s-tid"
+                source="admin"
+                value={form.watch("target_id") ?? ""}
+                onChange={(id) => form.setValue("target_id", id, { shouldValidate: true })}
+                selectedLabel={schedule?.employee_id ? schedule.target_label.replace(/^Employee: /, "") : undefined}
+                disabled={!!schedule}
+              />
+            )}
           </Field>
         )}
         <Field label="Start time" htmlFor="s-start" error={errors.start_time?.message} required>

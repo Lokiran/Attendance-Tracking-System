@@ -7,7 +7,7 @@ import { Avatar } from "@/components/ui/Misc";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { titleCase } from "@/lib/format";
 import type { TeamMember } from "@/lib/types";
 
@@ -17,13 +17,17 @@ export function EmployeeDetailPage() {
   const employeeId = Number(id);
   const { user } = useAuth();
   const [params] = useSearchParams();
-  const members = useQuery({
-    queryKey: ["team-members", "all"],
-    queryFn: () => api.get<TeamMember[]>("/team/members", { include_inactive: true }),
+  // One lookup for this person (scope-checked by the API), never the whole team list.
+  const member = useQuery({
+    queryKey: ["team-member", employeeId],
+    queryFn: () => api.get<TeamMember>("/team/members/" + employeeId),
+    enabled: Number.isInteger(employeeId) && employeeId > 0,
+    retry: (count, e) => !(e instanceof ApiError && e.status === 404) && count < 2,
   });
-  if (members.isError) return <ErrorState error={members.error} onRetry={() => members.refetch()} />;
-  if (!members.data) return <PageSkeleton />;
-  const emp = members.data.find((m) => m.id === employeeId);
+  if (member.isError && !(member.error instanceof ApiError && member.error.status === 404))
+    return <ErrorState error={member.error} onRetry={() => member.refetch()} />;
+  if (member.isLoading) return <PageSkeleton />;
+  const emp = member.data;
   if (!emp || !user)
     return <EmptyState title="Employee not found" description="This person is not in your reporting scope." action={<Link to="/team" className="text-sm text-brand-text hover:underline">Back to team</Link>} />;
 

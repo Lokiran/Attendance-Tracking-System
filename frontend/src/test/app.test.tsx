@@ -183,6 +183,72 @@ describe("manager dashboard", () => {
   });
 });
 
+describe("large organisations", () => {
+  const member = { id: 5, employee_code: "EMP001", full_name: "Rahul Reddy", role: "EMPLOYEE", job_title: "ML Engineer", department_name: "AI Engineering", manager_id: 3, manager_name: "Priya Sharma", is_active: true };
+
+  it("charts only the lowest 12 of a big team, sorted by the server", async () => {
+    const requests: URLSearchParams[] = [];
+    mockApi({
+      "/auth/me": me("MANAGER", { full_name: "Priya Sharma", id: 3 }),
+      "/dashboard/overview": { ...overview, headcount: 625 },
+      "/dashboard/employees": (url: URL) => {
+        requests.push(url.searchParams);
+        return { items: [row(5, "Rahul Reddy")], total: 625, page: 1, page_size: Number(url.searchParams.get("page_size")) };
+      },
+      "/dashboard/trends": { granularity: "day", headcount: 625, items: [] },
+      "/dashboard/exceptions": { ...emptyPage, counts: {} },
+    });
+    renderApp("/team");
+    expect(await screen.findByText(/The 12 lowest of 625 by attendance %/)).toBeInTheDocument();
+    expect(screen.getByText(/The 12 lowest of 625 by average net hours/)).toBeInTheDocument();
+    const ranked = requests.filter((p) => p.get("page_size") === "12");
+    expect(ranked.map((p) => p.get("sort")).sort()).toEqual(["attendance_percentage", "average_net_minutes"]);
+    expect(ranked.every((p) => p.get("order") === "asc")).toBe(true);
+    expect(requests.some((p) => Number(p.get("page_size")) > 50)).toBe(false);
+  });
+
+  it("finds a person for a report by searching, never by downloading everyone", async () => {
+    const searches: URLSearchParams[] = [];
+    const { calls } = mockApi({
+      "/auth/me": me("MANAGER", { full_name: "Priya Sharma", id: 3 }),
+      "/team/members": (url: URL) => {
+        searches.push(url.searchParams);
+        const q = (url.searchParams.get("search") ?? "").toLowerCase();
+        return [member].filter((m) => m.full_name.toLowerCase().includes(q));
+      },
+    });
+    renderApp("/reports");
+    const user = userEvent.setup();
+    const box = await screen.findByRole("combobox", { name: "Employee" });
+    await user.type(box, "rah");
+    await waitFor(() => expect(searches.some((p) => p.get("search") === "rah")).toBe(true)); // debounced
+    await user.click(await screen.findByRole("option", { name: /Rahul Reddy/ }));
+    expect(screen.getByText("Rahul Reddy")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Employee" })).not.toBeInTheDocument();
+    expect(searches.length).toBeGreaterThan(0);
+    expect(searches.every((p) => p.get("limit") === "20")).toBe(true);
+    expect(searches.some((p) => p.get("search") === "rah")).toBe(true);
+    expect(calls.filter((c) => c.path === "/team/members").length).toBe(searches.length);
+  });
+
+  it("opens one employee with a single lookup instead of the whole team list", async () => {
+    const { calls } = mockApi({
+      "/auth/me": me("MANAGER", { full_name: "Priya Sharma", id: 3 }),
+      "/team/members/5": member,
+      ...employeeRoutes(),
+    });
+    renderApp("/people/5");
+    expect(await screen.findByText(/EMP001 · ML Engineer · reports to Priya Sharma/)).toBeInTheDocument();
+    expect(calls.some((c) => c.path === "/team/members")).toBe(false);
+  });
+
+  it("says when a person is outside the manager's scope", async () => {
+    mockApi({ "/auth/me": me("MANAGER", { full_name: "Priya Sharma", id: 3 }), "/team/members/99": apiError(404, "Employee not found", "not_found") });
+    renderApp("/people/99");
+    expect(await screen.findByText("Employee not found")).toBeInTheDocument();
+  });
+});
+
 describe("navigation and guards", () => {
   it("shows administration links only to admins", async () => {
     mockApi({ "/auth/me": me("ADMIN", { full_name: "System Administrator", id: 1 }), ...employeeRoutes(), "/attendance/employees/1/summary": {}, "/attendance/employees/1/days": emptyPage, "/attendance/employees/1/trends": { items: [] } });

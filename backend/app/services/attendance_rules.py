@@ -90,8 +90,10 @@ class EmployeeData:
     date_joined: date
 
 
-@dataclass
+@dataclass(slots=True)
 class DayRecord:
+    """One employee-day. Shared between requests by the record cache: treat as read-only."""
+
     employee_id: int
     date: date
     status: DayStatus
@@ -207,8 +209,14 @@ def build_day_records(
     schedules: Sequence[ScheduleData],
     holidays: Iterable[HolidayData],
     policy: PolicyData,
+    shared: dict | None = None,
 ) -> list[DayRecord]:
-    """Day records for ``start..min(end, today)``. Future dates are never evaluated."""
+    """Day records for ``start..min(end, today)``. Future dates are never evaluated.
+
+    ``shared`` is an optional memo that callers computing many employees with the same schedules,
+    tz and policy can pass to every call, so schedule lookups and shift start times are worked out
+    once per department and day instead of once per person and day.
+    """
     end = min(end, today)
     if end < start:
         return []
@@ -217,37 +225,101 @@ def build_day_records(
     for s in sessions:
         if s.employee_id == employee.id and s.status != SessionStatus.VOIDED:
             by_day[s.check_in_at.astimezone(tz).date()].append(s)
+    for day_sessions in by_day.values():
+        if len(day_sessions) > 1:
+            day_sessions.sort(key=lambda s: s.check_in_at)
 
     holiday_map: dict[date, str] = {}
     for h in holidays:
         if h.department_id is None or h.department_id == employee.department_id:
             holiday_map.setdefault(h.holiday_date, h.name)
 
+    memo: dict = {} if shared is None else shared
+    personal = any(s.employee_id == employee.id for s in schedules)
+    ctx = _Ctx(employee, today, now, tz, policy, holiday_map, schedules, memo,
+               ("emp", employee.id) if personal else ("dept", employee.department_id))
     records: list[DayRecord] = []
+    one_day = timedelta(days=1)
     d = start
     while d <= end:
-        records.append(_day_record(employee, d, today, now, tz, sorted(by_day.get(d, []), key=lambda s: s.check_in_at),
-                                   schedules, holiday_map, policy))
-        d += timedelta(days=1)
+        records.append(_day_record(ctx, d, by_day.get(d, ())))
+        d += one_day
     return records
 
 
-def _day_record(employee, d, today, now, tz, day_sessions, schedules, holiday_map, policy) -> DayRecord:
-    completed = [s for s in day_sessions if s.status == SessionStatus.COMPLETED]
-    unresolved = [s for s in day_sessions if is_unresolved(s, today, now, tz, policy)]
-    active = [s for s in day_sessions if s.status == SessionStatus.OPEN and s not in unresolved]
-    net = sum(s.net_minutes or 0 for s in completed)
+@dataclass(slots=True)
+class _Ctx:
+    employee: EmployeeData
+    today: date
+    now: datetime
+    tz: ZoneInfo
+    policy: PolicyData
+    holiday_map: dict[date, str]
+    schedules: Sequence[ScheduleData]
+    memo: dict
+    schedule_key: tuple
 
-    schedule = resolve_schedule(schedules, employee, d) if d >= employee.date_joined else None
+    def schedule_on(self, d: date) -> ScheduleData | None:
+        key = (self.schedule_key, d)
+        try:
+            return self.memo[key]
+        except KeyError:
+            found = self.memo[key] = resolve_schedule(self.schedules, self.employee, d)
+            return found
+
+    def late_after(self, schedule: ScheduleData, d: date) -> datetime:
+        key = ("late", schedule.id, d)
+        try:
+            return self.memo[key]
+        except KeyError:
+            start_utc = datetime.combine(d, schedule.start_time, tzinfo=self.tz).astimezone(UTC)
+            found = self.memo[key] = start_utc + timedelta(minutes=self.policy.late_grace_minutes)
+            return found
+
+
+def _day_record(ctx: _Ctx, d: date, day_sessions: Sequence[SessionData]) -> DayRecord:
+    employee, today, policy = ctx.employee, ctx.today, ctx.policy
+    schedule = ctx.schedule_on(d) if d >= employee.date_joined else None
     workday = schedule is not None and d.isoweekday() in schedule.working_days
-    holiday = holiday_map.get(d) if workday else None
+    holiday = ctx.holiday_map.get(d) if workday else None
+    holiday_name = ctx.holiday_map.get(d) if schedule is not None else None
+
+    if not day_sessions:  # fast path: no attendance on this day
+        if schedule is None:
+            status, expected, exceptions = DayStatus.NOT_SCHEDULED, False, []
+        elif workday and holiday is None:
+            if d == today:
+                status, expected, exceptions = DayStatus.NOT_YET_CHECKED_IN, False, []
+            else:
+                status, expected, exceptions = DayStatus.ABSENT, True, [EXC_ABSENT]
+        elif holiday is not None:
+            status, expected, exceptions = DayStatus.HOLIDAY, False, []
+        else:
+            status, expected, exceptions = DayStatus.WEEKEND, False, []
+        return DayRecord(employee.id, d, status, expected, workday,
+                         schedule.required_minutes if expected else 0, 0, 0, 0, None, None, False, 0,
+                         holiday_name, exceptions)
+
+    completed = net = unresolved = active = 0
+    last_out: datetime | None = None
+    for s in day_sessions:
+        status_ = s.status
+        if status_ == SessionStatus.COMPLETED:
+            completed += 1
+            net += s.net_minutes or 0
+            if s.check_out_at is not None and (last_out is None or s.check_out_at > last_out):
+                last_out = s.check_out_at
+        elif is_unresolved(s, today, ctx.now, ctx.tz, policy):
+            unresolved += 1
+        elif status_ == SessionStatus.OPEN:
+            active += 1
 
     if d < today:
         # A still-running (e.g. overnight) session also makes its start day present.
-        qualifies = (bool(completed) and net >= policy.min_present_minutes) or bool(active)
+        qualifies = (completed > 0 and net >= policy.min_present_minutes) or active > 0
     else:  # today is still in progress: any completed or running session counts so far
-        qualifies = bool(completed) or bool(active)
-    present = qualifies or (bool(unresolved) and policy.count_incomplete_as_present)
+        qualifies = completed > 0 or active > 0
+    present = qualifies or (unresolved > 0 and policy.count_incomplete_as_present)
 
     exceptions: list[str] = []
     if d < employee.date_joined:
@@ -274,35 +346,15 @@ def _day_record(employee, d, today, now, tz, day_sessions, schedules, holiday_ma
     if unresolved:
         exceptions.insert(0, EXC_MISSING_CHECKOUT)
 
-    first_in = day_sessions[0].check_in_at if day_sessions else None
-    outs = [s.check_out_at for s in day_sessions if s.check_out_at is not None and s.status == SessionStatus.COMPLETED]
-    last_out = max(outs) if outs else None
-
+    first_in = day_sessions[0].check_in_at
     required = schedule.required_minutes if (expected and schedule is not None) else 0
-    if expected and schedule is not None and first_in is not None:
-        scheduled_start = datetime.combine(d, schedule.start_time, tzinfo=tz).astimezone(UTC)
-        if first_in > scheduled_start + timedelta(minutes=policy.late_grace_minutes):
-            exceptions.append(EXC_LATE_ARRIVAL)
+    if expected and schedule is not None and first_in > ctx.late_after(schedule, d):
+        exceptions.append(EXC_LATE_ARRIVAL)
     if expected and status == DayStatus.PRESENT and d < today and completed and net < required:
         exceptions.append(EXC_SHORT_HOURS)
 
-    return DayRecord(
-        employee_id=employee.id,
-        date=d,
-        status=status,
-        expected=expected,
-        scheduled_workday=workday,
-        required_minutes=required,
-        net_minutes=net,
-        completed_sessions=len(completed),
-        session_count=len(day_sessions),
-        first_check_in=first_in,
-        last_check_out=last_out,
-        has_active_session=bool(active),
-        unresolved_sessions=len(unresolved),
-        holiday_name=holiday_map.get(d) if (schedule is not None and d in holiday_map) else None,
-        exceptions=exceptions,
-    )
+    return DayRecord(employee.id, d, status, expected, workday, required, net, completed, len(day_sessions),
+                     first_in, last_out, active > 0, unresolved, holiday_name, exceptions)
 
 
 def summarize(records: Iterable[DayRecord], start: date, end: date) -> Summary:

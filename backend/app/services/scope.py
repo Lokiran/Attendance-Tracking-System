@@ -5,8 +5,8 @@ peers or unrelated teams. Being a department head grants no extra access. ADMIN 
 EMPLOYEE sees only themselves. Every protected query goes through these helpers.
 """
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, aliased, selectinload
 
 from app.core.errors import Forbidden, NotFound
 from app.models import Role, User
@@ -55,12 +55,17 @@ def resolve_scope(
     department_id: int | None = None,
     include_inactive: bool = False,
     tracked_only: bool = True,
+    search: str | None = None,
+    limit: int | None = None,
 ) -> list[User]:
-    """Employees the viewer may report on, optionally narrowed to a manager's subtree or department."""
+    """Employees the viewer may report on, optionally narrowed to a manager's subtree or department,
+    a name / employee-ID search and a maximum number of results (for search-as-you-type pickers)."""
     if viewer.role == Role.EMPLOYEE:
         raise Forbidden("Team data is only available to managers and administrators")
 
-    stmt = select(User)
+    # Department and manager come from two small IN queries instead of being joined onto every row:
+    # noticeably faster when the scope is thousands of people.
+    stmt = select(User).options(selectinload(User.department), selectinload(User.manager))
     if viewer.role == Role.MANAGER:
         allowed = subtree_ids(db, viewer.id)
         if manager_id is not None and manager_id != viewer.id:
@@ -80,4 +85,10 @@ def resolve_scope(
         stmt = stmt.where(User.is_active.is_(True))
     if tracked_only:
         stmt = stmt.where(User.attendance_tracked.is_(True))
-    return list(db.scalars(stmt.order_by(User.full_name)).unique())
+    if search and search.strip():
+        pattern = f"%{search.strip().lower()}%"
+        stmt = stmt.where(func.lower(User.full_name).like(pattern) | func.lower(User.employee_code).like(pattern))
+    stmt = stmt.order_by(User.full_name, User.id)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return list(db.scalars(stmt).unique())

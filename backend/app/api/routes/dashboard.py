@@ -7,7 +7,7 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import DB, AdminUser, ManagerOrAdmin, Paging, Range
 from app.core.timeutil import today_local
-from app.models import DayStatus
+from app.models import DayStatus, User
 from app.schemas.dashboard import (
     DepartmentStats,
     EmployeeRowsPage,
@@ -20,12 +20,12 @@ from app.schemas.dashboard import (
 )
 from app.services import dashboard, org
 from app.services.dashboard import ScopeArgs
-from app.services.scope import resolve_scope
+from app.services.scope import get_viewable_employee, resolve_scope
 
 router = APIRouter(tags=["dashboards"])
 
-SortKey = Literal["name", "code", "department", "check_in", "net_minutes", "attendance_percentage", "status",
-                  "exceptions"]
+SortKey = Literal["name", "code", "department", "check_in", "net_minutes", "average_net_minutes",
+                  "attendance_percentage", "status", "exceptions"]
 
 
 def _scope(manager_id: int | None, department_id: int | None) -> ScopeArgs:
@@ -80,15 +80,24 @@ def hierarchy(user: AdminUser, db: DB, include_inactive: bool = False):
     return org.hierarchy(db, include_inactive)
 
 
+def _member(p: User) -> TeamMember:
+    return TeamMember(id=p.id, employee_code=p.employee_code, full_name=p.full_name, role=p.role,
+                      job_title=p.job_title, department_name=p.department.name if p.department else None,
+                      manager_id=p.manager_id, manager_name=p.manager.full_name if p.manager else None,
+                      is_active=p.is_active)
+
+
 @router.get("/team/members", response_model=list[TeamMember], summary="People in my reporting scope")
 def team_members(user: ManagerOrAdmin, db: DB, manager_id: int | None = None, department_id: int | None = None,
-                 include_inactive: bool = False):
+                 include_inactive: bool = False, search: str | None = Query(None, max_length=100),
+                 limit: int | None = Query(None, ge=1, le=200,
+                                           description="Maximum results (use with search for pickers)")):
     people = resolve_scope(db, user, manager_id=manager_id, department_id=department_id,
-                           include_inactive=include_inactive, tracked_only=False)
-    return [
-        TeamMember(id=p.id, employee_code=p.employee_code, full_name=p.full_name, role=p.role,
-                   job_title=p.job_title, department_name=p.department.name if p.department else None,
-                   manager_id=p.manager_id, manager_name=p.manager.full_name if p.manager else None,
-                   is_active=p.is_active)
-        for p in people
-    ]
+                           include_inactive=include_inactive, tracked_only=False, search=search, limit=limit)
+    return [_member(p) for p in people]
+
+
+@router.get("/team/members/{employee_id}", response_model=TeamMember, summary="One person in my reporting scope")
+def team_member(employee_id: int, user: ManagerOrAdmin, db: DB):
+    # Same 404 for "missing" and "not in your scope", so ids cannot be probed.
+    return _member(get_viewable_employee(db, user, employee_id))

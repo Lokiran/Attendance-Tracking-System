@@ -6,19 +6,19 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { Field, Input, Select, TextArea } from "@/components/ui/Fields";
+import { Field, Input, TextArea } from "@/components/ui/Fields";
 import { ConfirmDialog, Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { PersonPicker } from "@/components/ui/PersonPicker";
 import { EmptyState } from "@/components/ui/States";
 import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/queries";
-import type { AdminUser, Department } from "@/lib/types";
+import type { Department } from "@/lib/types";
 
 function DepartmentModal({ dept, open, onClose }: { dept: Department | null; open: boolean; onClose: () => void }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const people = useQuery({ queryKey: [...qk.admin, "users", "all-active"], queryFn: () => api.get<{ items: AdminUser[] }>("/admin/users", { is_active: true, page_size: 200 }), enabled: open });
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [head, setHead] = useState("");
@@ -51,10 +51,7 @@ function DepartmentModal({ dept, open, onClose }: { dept: Department | null; ope
           <Input id="d-name" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Department head" htmlFor="d-head" hint="Informational: reporting lines, not this field, control data access.">
-          <Select id="d-head" value={head} onChange={(e) => setHead(e.target.value)}>
-            <option value="">None</option>
-            {people.data?.items.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-          </Select>
+          <PersonPicker id="d-head" source="admin" value={head} onChange={(id) => setHead(id)} selectedLabel={dept?.head?.full_name} placeholder="None. Search to choose a head" />
         </Field>
         <Field label="Description" htmlFor="d-desc">
           <TextArea id="d-desc" value={description} onChange={(e) => setDescription(e.target.value)} />

@@ -8,9 +8,10 @@ import { DateRangeFilter } from "@/components/ui/DateRangeFilter";
 import { Field, Input, Select } from "@/components/ui/Fields";
 import { ExportButton } from "@/components/ui/Misc";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { PersonPicker } from "@/components/ui/PersonPicker";
 import { api } from "@/lib/api";
 import { presetRange, todayInOffice } from "@/lib/dates";
-import type { Department, TeamMember } from "@/lib/types";
+import type { Department } from "@/lib/types";
 
 type ReportKind = "employee" | "team" | "department" | "monthly" | "exceptions";
 
@@ -30,7 +31,6 @@ export function ReportsPage() {
   const [month, setMonth] = useState(today.slice(0, 7));
   const [departmentId, setDepartmentId] = useState("");
   const [employeeId, setEmployeeId] = useState("");
-  const members = useQuery({ queryKey: ["team-members", "all"], queryFn: () => api.get<TeamMember[]>("/team/members", { include_inactive: true }) });
   const departments = useQuery({ queryKey: ["departments"], queryFn: () => api.get<Department[]>("/departments"), enabled: isAdmin });
   const scope = { department_id: departmentId || undefined };
   const [year, mon] = month.split("-").map(Number);
@@ -63,12 +63,7 @@ export function ReportsPage() {
             </div>
             {r.kind === "employee" && (
               <Field label="Employee" htmlFor="r-emp">
-                <Select id="r-emp" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
-                  <option value="">Select an employee…</option>
-                  {members.data?.map((m) => (
-                    <option key={m.id} value={m.id}>{m.full_name} ({m.employee_code})</option>
-                  ))}
-                </Select>
+                <PersonPicker id="r-emp" source="team" includeInactive value={employeeId} onChange={(id) => setEmployeeId(id)} />
               </Field>
             )}
             {r.kind === "monthly" && (

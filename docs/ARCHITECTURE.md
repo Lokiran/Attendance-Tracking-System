@@ -107,6 +107,11 @@ subtrees are computed with a recursive CTE (`UNION`, so they're cycle-safe).
 * Check-in/out, approvals and admin changes invalidate the affected query families
   immediately.
 
+## Scale
+
+Built for one admin, a few managers and thousands of employees: fixed query counts, one shared
+computation per dashboard page, search-based pickers. Details and measurements: [scaling.md](scaling.md).
+
 ## CSV exports
 
 Exports use the same scope functions as the dashboards, and each export is audited
@@ -141,7 +146,8 @@ Interactive documentation: `http://127.0.0.1:8000/api/docs` (Swagger) and `/api/
 | GET | `/api/dashboard/departments` | Department comparison (admin) |
 | GET | `/api/dashboard/managers` | Manager comparison (admin) |
 | GET | `/api/org/hierarchy` | Organisation → department → reporting tree (admin) |
-| GET | `/api/team/members` | People in my scope |
+| GET | `/api/team/members` | People in my scope (`search`, `limit` for pickers) |
+| GET | `/api/team/members/{id}` | One person in my scope (404 otherwise) |
 | GET/POST | `/api/admin/users` | List/search, create |
 | GET/PATCH | `/api/admin/users/{id}` | Read, update (role, manager, department, active…) |
 | POST | `/api/admin/users/{id}/reset-password` | Reset password |

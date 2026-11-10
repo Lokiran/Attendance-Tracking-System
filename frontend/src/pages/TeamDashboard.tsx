@@ -19,6 +19,8 @@ import { exceptionLabel, formatDate, formatMinutes, formatPercent, formatTime, h
 import { useEmployeeRows, useExceptions, useOverview, useTeamTrends, type ScopeParams } from "@/lib/queries";
 import type { DayStatus, EmployeeRow, ExceptionRow } from "@/lib/types";
 
+const RANKED_LIMIT = 12;
+
 const CARD_FILTER: Record<string, DayStatus> = { present: "PRESENT", absent: "ABSENT", incomplete: "INCOMPLETE", pending: "NOT_YET_CHECKED_IN" };
 
 /**
@@ -48,7 +50,9 @@ export function TeamDashboardView({ scope, title, description, breadcrumb, extra
   const base = { ...scope, start, end };
   const overview = useOverview({ ...base, on_date: onDate });
   const rows = useEmployeeRows({ ...base, on_date: onDate, search, status, sort: sort.sort, order: sort.order, page, page_size: 10 });
-  const all = useEmployeeRows({ ...base, on_date: onDate, sort: "attendance_percentage", order: "desc", page_size: 200 });
+  // Per-person charts show who needs attention: the lowest few, sorted by the server over the whole scope.
+  const lowAttendance = useEmployeeRows({ ...base, on_date: onDate, sort: "attendance_percentage", order: "asc", page_size: RANKED_LIMIT });
+  const lowHours = useEmployeeRows({ ...base, on_date: onDate, sort: "average_net_minutes", order: "asc", page_size: RANKED_LIMIT });
   const daily = useTeamTrends({ ...base, granularity: "day" });
   const trend = useTeamTrends({ ...base, granularity });
   const exceptions = useExceptions({ ...base, exception_type: excType, page: excPage, page_size: 8 });
@@ -94,7 +98,10 @@ export function TeamDashboardView({ scope, title, description, breadcrumb, extra
     { key: "net", header: "Net", align: "right", cell: (r) => formatMinutes(r.net_minutes) },
   ];
 
-  const ranked = all.data?.items ?? [];
+  const byAttendance = lowAttendance.data?.items ?? [];
+  const byHours = (lowHours.data?.items ?? []).filter((r) => r.period.average_net_minutes !== null);
+  const rankedSubtitle = (total: number | undefined, what: string) =>
+    total !== undefined && total > RANKED_LIMIT ? `The ${RANKED_LIMIT} lowest of ${total} by ${what} · click to open` : `Everyone, lowest ${what} first · click to open`;
   const exportParams = { ...scope, start, end };
 
   return (
@@ -103,7 +110,7 @@ export function TeamDashboardView({ scope, title, description, breadcrumb, extra
         title={title}
         description={description}
         breadcrumb={breadcrumb}
-        actions={<LastUpdated updatedAt={overview.dataUpdatedAt || undefined} fetching={overview.isFetching} onRefresh={() => { overview.refetch(); rows.refetch(); all.refetch(); daily.refetch(); trend.refetch(); exceptions.refetch(); }} />}
+        actions={<LastUpdated updatedAt={overview.dataUpdatedAt || undefined} fetching={overview.isFetching} onRefresh={() => { overview.refetch(); rows.refetch(); lowAttendance.refetch(); lowHours.refetch(); daily.refetch(); trend.refetch(); exceptions.refetch(); }} />}
       />
       <Card className="flex flex-wrap items-center gap-3 px-4 py-3">
         <DateRangeFilter start={start} end={end} onChange={setRange} />
@@ -154,30 +161,30 @@ export function TeamDashboardView({ scope, title, description, breadcrumb, extra
           <AttendanceTrendChart items={trend.data?.items ?? []} onSelect={(b) => setRange({ start: b.start, end: minDate(b.end, today) })} />
         </ChartCard>
         <ChartCard
-          title="Employee-wise office hours"
-          subtitle="Average net hours per attended day · click to open"
-          loading={all.isLoading}
-          error={all.error}
-          isEmpty={!ranked.some((r) => r.period.average_net_minutes)}
-          height={Math.max(200, ranked.length * 30)}
-          table={{ columns: ["Employee", "Avg net/day", "Net total"], rows: ranked.map((r) => [r.full_name, formatMinutes(r.period.average_net_minutes), formatMinutes(r.period.net_minutes)]) }}
+          title="Lowest average office hours"
+          subtitle={rankedSubtitle(lowHours.data?.total, "average net hours per attended day")}
+          loading={lowHours.isLoading}
+          error={lowHours.error}
+          isEmpty={!byHours.length}
+          height={Math.max(200, byHours.length * 30)}
+          table={{ columns: ["Employee", "Avg net/day", "Net total"], rows: byHours.map((r) => [r.full_name, formatMinutes(r.period.average_net_minutes), formatMinutes(r.period.net_minutes)]) }}
         >
           <RankedBarChart
             unit="h"
-            data={[...ranked].sort((a, b) => (b.period.average_net_minutes ?? 0) - (a.period.average_net_minutes ?? 0)).map((r) => ({ id: r.employee_id, label: r.full_name, value: hours(r.period.average_net_minutes, 2) }))}
+            data={byHours.map((r) => ({ id: r.employee_id, label: r.full_name, value: hours(r.period.average_net_minutes, 2) }))}
             onSelect={(id) => navigate(employeeLink(Number(id)))}
           />
         </ChartCard>
         <ChartCard
-          title="Attendance percentage comparison"
-          subtitle="Share of expected days attended · click to open"
-          loading={all.isLoading}
-          error={all.error}
-          isEmpty={!ranked.some((r) => r.period.attendance_percentage !== null)}
-          height={Math.max(200, ranked.length * 30)}
-          table={{ columns: ["Employee", "Attendance", "Present/expected"], rows: ranked.map((r) => [r.full_name, formatPercent(r.period.attendance_percentage), `${r.period.present_expected_days}/${r.period.expected_days}`]) }}
+          title="Lowest attendance"
+          subtitle={rankedSubtitle(lowAttendance.data?.total, "attendance %")}
+          loading={lowAttendance.isLoading}
+          error={lowAttendance.error}
+          isEmpty={!byAttendance.some((r) => r.period.attendance_percentage !== null)}
+          height={Math.max(200, byAttendance.length * 30)}
+          table={{ columns: ["Employee", "Attendance", "Present/expected"], rows: byAttendance.map((r) => [r.full_name, formatPercent(r.period.attendance_percentage), `${r.period.present_expected_days}/${r.period.expected_days}`]) }}
         >
-          <RankedBarChart unit="%" max={100} data={ranked.map((r) => ({ id: r.employee_id, label: r.full_name, value: r.period.attendance_percentage }))} onSelect={(id) => navigate(employeeLink(Number(id)))} />
+          <RankedBarChart unit="%" max={100} data={byAttendance.map((r) => ({ id: r.employee_id, label: r.full_name, value: r.period.attendance_percentage }))} onSelect={(id) => navigate(employeeLink(Number(id)))} />
         </ChartCard>
       </div>
 

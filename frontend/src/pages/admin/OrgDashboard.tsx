@@ -8,30 +8,20 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { ExportButton } from "@/components/ui/Misc";
 import { withRange } from "@/hooks/useUrlState";
 import { formatMinutes, formatPercent, hours } from "@/lib/format";
-import { useDepartmentStats, useEmployeeRows, useManagerStats } from "@/lib/queries";
+import { useDepartmentStats, useManagerStats, useOverview } from "@/lib/queries";
 import type { DepartmentStats } from "@/lib/types";
 
 import { TeamDashboardView } from "../TeamDashboard";
 
-const BANDS = [
-  { label: "<70%", lo: 0, hi: 70 },
-  { label: "70–80%", lo: 70, hi: 80 },
-  { label: "80–90%", lo: 80, hi: 90 },
-  { label: "90–95%", lo: 90, hi: 95 },
-  { label: "95–100%", lo: 95, hi: 100.01 },
-];
-
 function Comparisons({ start, end, onDate }: { start: string; end: string; onDate: string }) {
   const navigate = useNavigate();
   const depts = useDepartmentStats({ start, end, on_date: onDate });
-  const managers = useManagerStats({ start, end });
-  const everyone = useEmployeeRows({ start, end, on_date: onDate, page_size: 200 });
+  const managers = useManagerStats({ start, end, on_date: onDate });
+  // Same query (and cache entry) as the headline cards; bands are counted over everyone by the API.
+  const overview = useOverview({ start, end, on_date: onDate });
   const deptRows = depts.data ?? [];
   const mgrRows = managers.data ?? [];
-  const bins = BANDS.map((b) => ({
-    label: b.label,
-    count: (everyone.data?.items ?? []).filter((r) => r.period.attendance_percentage !== null && r.period.attendance_percentage >= b.lo && r.period.attendance_percentage < b.hi).length,
-  }));
+  const bins = overview.data?.attendance_bands ?? [];
 
   const deptColumns: Column<DepartmentStats>[] = [
     {
@@ -80,8 +70,8 @@ function Comparisons({ start, end, onDate }: { start: string; end: string; onDat
         <ChartCard
           title="Attendance percentage distribution"
           subtitle="Employees by attendance band in the period"
-          loading={everyone.isLoading}
-          error={everyone.error}
+          loading={overview.isLoading}
+          error={overview.error}
           isEmpty={bins.every((b) => b.count === 0)}
           table={{ columns: ["Band", "Employees"], rows: bins.map((b) => [b.label, b.count]) }}
         >

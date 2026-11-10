@@ -179,6 +179,8 @@ export interface Overview {
   headcount: number;
   snapshot: Snapshot;
   period: PeriodStats;
+  /** People per attendance band over the whole scope (never a sample). */
+  attendance_bands: { label: string; count: number }[];
   pending_corrections: number;
 }
 

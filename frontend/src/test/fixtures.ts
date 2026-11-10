@@ -102,6 +102,13 @@ export const overview: Overview = {
   headcount: 3,
   snapshot: { present: 2, absent: 0, not_checked_in: 1, incomplete: 0, off: 0, checked_in_now: 1 },
   period,
+  attendance_bands: [
+    { label: "<70%", count: 0 },
+    { label: "70–80%", count: 0 },
+    { label: "80–90%", count: 1 },
+    { label: "90–95%", count: 1 },
+    { label: "95–100%", count: 1 },
+  ],
   pending_corrections: 1,
 };
 

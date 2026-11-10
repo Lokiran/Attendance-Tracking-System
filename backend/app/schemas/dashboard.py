@@ -31,6 +31,11 @@ class PeriodStats(BaseModel):
     attendance_percentage: float | None
 
 
+class BandCount(BaseModel):
+    label: str
+    count: int
+
+
 class OverviewOut(BaseModel):
     generated_at: datetime
     on_date: date
@@ -39,6 +44,7 @@ class OverviewOut(BaseModel):
     headcount: int
     snapshot: Snapshot
     period: PeriodStats
+    attendance_bands: list[BandCount]
     pending_corrections: int
 
 

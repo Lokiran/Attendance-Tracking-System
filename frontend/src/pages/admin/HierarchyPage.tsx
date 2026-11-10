@@ -17,6 +17,28 @@ function matches(n: HierarchyNode, q: string): boolean {
   return n.full_name.toLowerCase().includes(q) || n.employee_code.toLowerCase().includes(q) || n.children.some((c) => matches(c, q));
 }
 
+const PAGE = 50;
+
+/** Renders a long list of people 50 at a time, so a manager with hundreds of reports stays fast. */
+function NodeList({ nodes, depth, q, expandAll }: { nodes: HierarchyNode[]; depth: number; q: string; expandAll: boolean }) {
+  const [shown, setShown] = useState(PAGE);
+  const rest = nodes.length - shown;
+  return (
+    <>
+      {nodes.slice(0, shown).map((c) => (
+        <Node key={c.id} node={c} depth={depth} q={q} expandAll={expandAll} />
+      ))}
+      {rest > 0 && (
+        <li style={{ paddingLeft: depth * 20 + 36 }} className="py-1">
+          <button type="button" onClick={() => setShown((n) => n + PAGE)} className="text-xs font-medium text-brand-text hover:underline">
+            Show {Math.min(PAGE, rest)} more ({rest} not shown)
+          </button>
+        </li>
+      )}
+    </>
+  );
+}
+
 function Node({ node, depth, q, expandAll }: { node: HierarchyNode; depth: number; q: string; expandAll: boolean }) {
   const [open, setOpen] = useState(depth < 1);
   const visibleKids = q ? node.children.filter((c) => matches(c, q)) : node.children;
@@ -47,9 +69,7 @@ function Node({ node, depth, q, expandAll }: { node: HierarchyNode; depth: numbe
       </div>
       {isOpen && visibleKids.length > 0 && (
         <ul role="group">
-          {visibleKids.map((c) => (
-            <Node key={c.id} node={c} depth={depth + 1} q={q} expandAll={expandAll} />
-          ))}
+          <NodeList nodes={visibleKids} depth={depth + 1} q={q} expandAll={expandAll} />
         </ul>
       )}
     </li>
@@ -100,9 +120,12 @@ export function HierarchyPage() {
                   </span>
                 </div>
                 <ul role="group" className="p-2">
-                  {(query ? d.nodes.filter((n) => matches(n, query) || d.name.toLowerCase().includes(query)) : d.nodes).map((n) => (
-                    <Node key={n.id} node={n} depth={0} q={d.name.toLowerCase().includes(query) ? "" : query} expandAll={expandAll} />
-                  ))}
+                  <NodeList
+                    nodes={query ? d.nodes.filter((n) => matches(n, query) || d.name.toLowerCase().includes(query)) : d.nodes}
+                    depth={0}
+                    q={d.name.toLowerCase().includes(query) ? "" : query}
+                    expandAll={expandAll}
+                  />
                   {d.nodes.length === 0 && <li className="px-3 py-2 text-xs text-ink-3">No members</li>}
                 </ul>
               </Card>

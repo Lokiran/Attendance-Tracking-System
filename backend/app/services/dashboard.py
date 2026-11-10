@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core import clock
 from app.core.timeutil import local_date, office_tz
 from app.models import AttendanceCorrection, DayStatus, Department, RequestStatus, Role, User
+from app.services import record_cache
 from app.services.attendance_data import compute_records
 from app.services.attendance_rules import (
     EXC_LATE_ARRIVAL,
@@ -71,14 +72,36 @@ def _snapshot(records_on_date: list[DayRecord | None]) -> dict:
     return counts
 
 
-def _compute(db: Session, employees: list[User], start: date, end: date, on_date: date | None):
-    lo = min(start, on_date) if on_date else start
-    hi = max(end, on_date) if on_date else end
-    all_records = compute_records(db, employees, lo, hi)
+@dataclass
+class Computed:
+    """Day records of a scope plus what every dashboard endpoint derives from them."""
+    period: dict[int, list[DayRecord]]   # employee id -> records within start..end
+    on: dict[int, DayRecord | None]      # employee id -> record on the snapshot date
+    summary: dict[int, Summary]          # employee id -> period summary
+    exception_count: dict[int, int]      # employee id -> exceptions in the period
+
+
+def _derive(all_records: dict[int, list[DayRecord]], start: date, end: date, on_date: date | None) -> Computed:
     period = {eid: [r for r in recs if start <= r.date <= end] for eid, recs in all_records.items()}
     on = {eid: next((r for r in recs if r.date == on_date), None) for eid, recs in all_records.items()} \
         if on_date else {}
-    return period, on
+    return Computed(
+        period=period, on=on,
+        summary={eid: summarize(recs, start, end) for eid, recs in period.items()},
+        exception_count={eid: sum(len(r.exceptions) for r in recs) for eid, recs in period.items()},
+    )
+
+
+def _compute(db: Session, employees: list[User], start: date, end: date, on_date: date | None) -> Computed:
+    lo = min(start, on_date) if on_date else start
+    hi = max(end, on_date) if on_date else end
+    all_records = compute_records(db, employees, lo, hi)
+    # The page's requests get the same cached records object; derive summaries from it once as well.
+    # The entry holds all_records, so its id() cannot be reused while the entry exists.
+    held, result = record_cache.get_or_compute(
+        ("derived", id(all_records), start, end, on_date), len(all_records),
+        lambda: (all_records, _derive(all_records, start, end, on_date)))
+    return result if held is all_records else _derive(all_records, start, end, on_date)
 
 
 def _pending_counts(db: Session, employee_ids: list[int]) -> dict:
@@ -91,18 +114,38 @@ def _pending_counts(db: Session, employee_ids: list[int]) -> dict:
 
 def overview(db: Session, viewer: User, scope: ScopeArgs, start: date, end: date, on_date: date) -> dict:
     employees = resolve_scope(db, viewer, manager_id=scope.manager_id, department_id=scope.department_id)
-    period, on = _compute(db, employees, start, end, on_date)
-    summaries = [summarize(period[e.id], start, end) for e in employees]
+    c = _compute(db, employees, start, end, on_date)
+    summaries = [c.summary[e.id] for e in employees]
     return {
         "generated_at": clock.utcnow(),
         "on_date": on_date,
         "start": start,
         "end": end,
         "headcount": len(employees),
-        "snapshot": _snapshot([on.get(e.id) for e in employees]),
+        "snapshot": _snapshot([c.on.get(e.id) for e in employees]),
         "period": aggregate(summaries),
+        "attendance_bands": attendance_bands(summaries),
         **_pending_counts(db, [e.id for e in employees]),
     }
+
+
+# Attendance-% bands for the distribution chart: (label, inclusive lower bound, exclusive upper bound).
+ATTENDANCE_BANDS = (("<70%", 0, 70), ("70–80%", 70, 80), ("80–90%", 80, 90), ("90–95%", 90, 95),
+                    ("95–100%", 95, 100.01))
+
+
+def attendance_bands(summaries: list[Summary]) -> list[dict]:
+    """How many people fall in each attendance band, counted over the whole scope (never a sample)."""
+    counts = [0] * len(ATTENDANCE_BANDS)
+    for s in summaries:
+        pct = s.attendance_percentage
+        if pct is None:
+            continue
+        for i, (_label, lo, hi) in enumerate(ATTENDANCE_BANDS):
+            if lo <= pct < hi:
+                counts[i] += 1
+                break
+    return [{"label": label, "count": n} for (label, _lo, _hi), n in zip(ATTENDANCE_BANDS, counts, strict=True)]
 
 
 SORT_KEYS = {
@@ -111,6 +154,8 @@ SORT_KEYS = {
     "department": lambda r: (r["department_name"] or "").lower(),
     "check_in": lambda r: (r["day"]["first_check_in"] is None, r["day"]["first_check_in"] or 0),
     "net_minutes": lambda r: r["period"]["net_minutes"],
+    "average_net_minutes": lambda r: (r["period"]["average_net_minutes"] is None,
+                                      r["period"]["average_net_minutes"] or 0),
     "attendance_percentage": lambda r: (r["period"]["attendance_percentage"] is None,
                                         r["period"]["attendance_percentage"] or 0),
     "status": lambda r: r["day"]["status"] or "",
@@ -125,18 +170,19 @@ def employee_rows(
 ) -> dict:
     employees = resolve_scope(db, viewer, manager_id=scope.manager_id, department_id=scope.department_id,
                               include_inactive=include_inactive)
+    # Compute for the whole scope (shared with the page's other requests), then filter.
+    c = _compute(db, employees, start, end, on_date)
     if search:
         q = search.strip().lower()
         employees = [e for e in employees if q in e.full_name.lower() or q in e.employee_code.lower()]
-    period, on = _compute(db, employees, start, end, on_date)
 
     rows = []
     for e in employees:
-        day = on.get(e.id)
+        day = c.on.get(e.id)
         if status is not None and (day is None or day.status != status):
             continue
-        summary = summarize(period[e.id], start, end)
-        exc_count = sum(len(r.exceptions) for r in period[e.id])
+        summary = c.summary[e.id]
+        exc_count = c.exception_count[e.id]
         rows.append({
             "employee_id": e.id, "employee_code": e.employee_code, "full_name": e.full_name,
             "job_title": e.job_title, "role": e.role, "is_active": e.is_active,
@@ -174,24 +220,40 @@ def _bucket_key(d: date, granularity: str) -> tuple[date, date, str]:
 def bucketize(records: Iterable[DayRecord], end: date, granularity: str) -> list[dict]:
     """Aggregate day records into day/week/month buckets (shared by team and employee trends)."""
     buckets: dict[date, dict] = {}
+    bucket_of: dict[date, dict] = {}  # date -> its bucket, so labels are built once per date, not per record
+    present_s, absent_s, incomplete_s = DayStatus.PRESENT, DayStatus.ABSENT, DayStatus.INCOMPLETE
     for r in records:
-        b_start, b_end, label = _bucket_key(r.date, granularity)
-        b = buckets.setdefault(b_start, {
-            "start": b_start, "end": min(b_end, end), "label": label, "expected": 0, "present_expected": 0,
-            "present": 0, "absent": 0, "incomplete": 0, "net_minutes": 0, "attended": 0,
-            "required_minutes": 0, "late": 0, "missing_checkout": 0, "short_hours": 0,
-        })
-        b["expected"] += int(r.expected)
-        b["present_expected"] += int(r.expected and r.status == DayStatus.PRESENT)
-        b["present"] += int(r.status == DayStatus.PRESENT)
-        b["absent"] += int(r.status == DayStatus.ABSENT)
-        b["incomplete"] += int(r.status == DayStatus.INCOMPLETE)
+        b = bucket_of.get(r.date)
+        if b is None:
+            b_start, b_end, label = _bucket_key(r.date, granularity)
+            b = buckets.get(b_start)
+            if b is None:
+                b = buckets[b_start] = {
+                    "start": b_start, "end": min(b_end, end), "label": label, "expected": 0, "present_expected": 0,
+                    "present": 0, "absent": 0, "incomplete": 0, "net_minutes": 0, "attended": 0,
+                    "required_minutes": 0, "late": 0, "missing_checkout": 0, "short_hours": 0,
+                }
+            bucket_of[r.date] = b
+        status = r.status
+        if r.expected:
+            b["expected"] += 1
+            if status == present_s:
+                b["present_expected"] += 1
+        if status == present_s:
+            b["present"] += 1
+            if r.net_minutes > 0:
+                b["attended"] += 1
+        elif status == absent_s:
+            b["absent"] += 1
+        elif status == incomplete_s:
+            b["incomplete"] += 1
         b["net_minutes"] += r.net_minutes
         b["required_minutes"] += r.required_minutes
-        b["attended"] += int(r.status == DayStatus.PRESENT and r.net_minutes > 0)
-        b["late"] += int(EXC_LATE_ARRIVAL in r.exceptions)
-        b["missing_checkout"] += int(EXC_MISSING_CHECKOUT in r.exceptions)
-        b["short_hours"] += int(EXC_SHORT_HOURS in r.exceptions)
+        exc = r.exceptions
+        if exc:
+            b["late"] += EXC_LATE_ARRIVAL in exc
+            b["missing_checkout"] += EXC_MISSING_CHECKOUT in exc
+            b["short_hours"] += EXC_SHORT_HOURS in exc
     items = []
     for b in sorted(buckets.values(), key=lambda x: x["start"]):
         b["attendance_percentage"] = round(b["present_expected"] * 100 / b["expected"], 1) if b["expected"] else None
@@ -202,43 +264,48 @@ def bucketize(records: Iterable[DayRecord], end: date, granularity: str) -> list
 
 def trends(db: Session, viewer: User, scope: ScopeArgs, start: date, end: date, granularity: str) -> dict:
     employees = resolve_scope(db, viewer, manager_id=scope.manager_id, department_id=scope.department_id)
-    period, _ = _compute(db, employees, start, end, None)
-    records = (r for recs in period.values() for r in recs)
+    records = (r for recs in _compute(db, employees, start, end, None).period.values() for r in recs)
     return {"granularity": granularity, "headcount": len(employees), "items": bucketize(records, end, granularity)}
 
 
 def exceptions(db: Session, viewer: User, scope: ScopeArgs, start: date, end: date, *,
                exception_type: str | None = None, page: int = 1, page_size: int = 20) -> dict:
     employees = resolve_scope(db, viewer, manager_id=scope.manager_id, department_id=scope.department_id)
-    period, _ = _compute(db, employees, start, end, None)
+    period = _compute(db, employees, start, end, None).period
     by_id = {e.id: e for e in employees}
     counts: dict[str, int] = defaultdict(int)
-    rows = []
+    matches: list[tuple[date, str, DayRecord]] = []  # light tuples; full rows are built for one page only
     for eid, recs in period.items():
-        e = by_id[eid]
+        name = by_id[eid].full_name
         for r in recs:
+            if not r.exceptions:
+                continue
             for x in r.exceptions:
                 counts[x] += 1
-            if not r.exceptions or (exception_type and exception_type not in r.exceptions):
+            if exception_type and exception_type not in r.exceptions:
                 continue
-            rows.append({
-                "employee_id": e.id, "employee_code": e.employee_code, "full_name": e.full_name,
-                "department_name": e.department.name if e.department else None, "date": r.date,
-                "status": r.status, "exceptions": r.exceptions, "first_check_in": r.first_check_in,
-                "last_check_out": r.last_check_out, "net_minutes": r.net_minutes,
-                "required_minutes": r.required_minutes,
-            })
-    rows.sort(key=lambda x: (x["date"], x["full_name"]), reverse=True)
+            matches.append((r.date, name, r))
+    matches.sort(key=lambda m: (m[0], m[1]), reverse=True)
     offset = (page - 1) * page_size
-    return {"counts": dict(counts), "items": rows[offset:offset + page_size], "total": len(rows), "page": page,
-            "page_size": page_size}
+    rows = []
+    for _d, _n, r in matches[offset:offset + page_size]:
+        e = by_id[r.employee_id]
+        rows.append({
+            "employee_id": e.id, "employee_code": e.employee_code, "full_name": e.full_name,
+            "department_name": e.department.name if e.department else None, "date": r.date,
+            "status": r.status, "exceptions": r.exceptions, "first_check_in": r.first_check_in,
+            "last_check_out": r.last_check_out, "net_minutes": r.net_minutes,
+            "required_minutes": r.required_minutes,
+        })
+    return {"counts": dict(counts), "items": rows, "total": len(matches), "page": page, "page_size": page_size}
 
 
-def _reports_tree(users: list[User]) -> dict[int, set[int]]:
+def _reports_tree(links: Iterable[tuple[int, int | None]]) -> dict[int, set[int]]:
+    """Every manager's whole subtree, from (user id, manager id) pairs."""
     children: dict[int, list[int]] = defaultdict(list)
-    for u in users:
-        if u.manager_id is not None:
-            children[u.manager_id].append(u.id)
+    for uid, manager_id in links:
+        if manager_id is not None:
+            children[manager_id].append(uid)
 
     def collect(root: int) -> set[int]:
         out: set[int] = set()
@@ -251,12 +318,12 @@ def _reports_tree(users: list[User]) -> dict[int, set[int]]:
             stack.extend(children.get(n, []))
         return out
 
-    return {u.id: collect(u.id) for u in users if u.id in children}
+    return {root: collect(root) for root in children}
 
 
 def department_comparison(db: Session, viewer: User, start: date, end: date, on_date: date) -> list[dict]:
     employees = resolve_scope(db, viewer)
-    period, on = _compute(db, employees, start, end, on_date)
+    c = _compute(db, employees, start, end, on_date)
     departments = list(db.scalars(select(Department).order_by(Department.name)))
     out = []
     for dept in [*departments, None]:
@@ -268,8 +335,8 @@ def department_comparison(db: Session, viewer: User, start: date, end: date, on_
             "department_name": dept.name if dept else "Unassigned",
             "head_name": dept.head.full_name if dept and dept.head else None,
             "headcount": len(members),
-            "snapshot": _snapshot([on.get(e.id) for e in members]),
-            "period": aggregate([summarize(period[e.id], start, end) for e in members]),
+            "snapshot": _snapshot([c.on.get(e.id) for e in members]),
+            "period": aggregate([c.summary[e.id] for e in members]),
         })
     return out
 
@@ -277,14 +344,14 @@ def department_comparison(db: Session, viewer: User, start: date, end: date, on_
 def manager_comparison(db: Session, viewer: User, start: date, end: date, on_date: date,
                        department_id: int | None = None) -> list[dict]:
     employees = resolve_scope(db, viewer)
-    all_users = list(db.scalars(select(User)).unique())
-    tree = _reports_tree(all_users)
-    period, on = _compute(db, employees, start, end, on_date)
+    # Only (id, manager id) pairs for everyone; full rows just for the people who manage someone.
+    tree = _reports_tree(db.execute(select(User.id, User.manager_id)).tuples())
+    c = _compute(db, employees, start, end, on_date)
     scoped = {e.id: e for e in employees}
+    managers = db.scalars(select(User).where(User.id.in_(tree), User.role != Role.EMPLOYEE)).unique() \
+        if tree else []
     out = []
-    for u in all_users:
-        if u.id not in tree or u.role == Role.EMPLOYEE:
-            continue
+    for u in managers:
         if department_id is not None and u.department_id != department_id:
             continue
         members = [scoped[i] for i in tree[u.id] if i in scoped]
@@ -293,8 +360,8 @@ def manager_comparison(db: Session, viewer: User, start: date, end: date, on_dat
             "department_name": u.department.name if u.department else None,
             "team_size": len(members),
             "direct_reports": sum(1 for m in members if m.manager_id == u.id),
-            "snapshot": _snapshot([on.get(m.id) for m in members]),
-            "period": aggregate([summarize(period[m.id], start, end) for m in members]),
+            "snapshot": _snapshot([c.on.get(m.id) for m in members]),
+            "period": aggregate([c.summary[m.id] for m in members]),
         })
     out.sort(key=lambda r: r["manager_name"])
     return out
