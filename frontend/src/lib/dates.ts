@@ -2,6 +2,22 @@
 
 import { getOfficeTimezone } from "./format";
 
+let latestTimesheet: string | null = null;
+
+/** Set from /auth/me: the last date any imported timesheet covers. */
+export function setLatestTimesheetDate(d: string | null | undefined) {
+  latestTimesheet = d ?? null;
+}
+
+/**
+ * The month pages open on: the current month, or, while no timesheet covers the current month yet, the
+ * month of the latest imported timesheet (so nobody lands on an empty month). Returns any date in it.
+ */
+export function defaultMonthDate(today: string = todayInOffice()): string {
+  if (latestTimesheet && latestTimesheet < today.slice(0, 8) + "01") return latestTimesheet;
+  return today;
+}
+
 export function todayInOffice(now: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: getOfficeTimezone(),

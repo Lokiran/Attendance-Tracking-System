@@ -52,6 +52,8 @@ export interface MeResponse {
   csrf_token: string;
   office_timezone: string;
   has_reports: boolean;
+  /** Last date any committed timesheet covers. */
+  latest_timesheet_date?: string | null;
 }
 
 export interface DayRecord {

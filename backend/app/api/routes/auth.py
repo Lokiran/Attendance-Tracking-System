@@ -12,6 +12,7 @@ from app.models import User
 from app.schemas.auth import ChangePasswordRequest, DevLoginRequest, LoginRequest, MeResponse, Profile, ProvidersOut
 from app.schemas.common import MessageResponse
 from app.services import auth_service, entra
+from app.services.attendance_data import latest_import_through
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -35,7 +36,7 @@ def _clear_cookies(response: Response) -> None:
 def _me(db, user: User, csrf: str) -> MeResponse:
     has_reports = db.scalar(select(User.id).where(User.manager_id == user.id).limit(1)) is not None
     return MeResponse(user=Profile.model_validate(user), csrf_token=csrf, office_timezone=office_tz().key,
-                      has_reports=has_reports)
+                      has_reports=has_reports, latest_timesheet_date=latest_import_through(db))
 
 
 @router.get("/providers", response_model=ProvidersOut, summary="Sign-in methods the login page should offer")

@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { api, ApiError, setCsrfToken } from "@/lib/api";
+import { setLatestTimesheetDate } from "@/lib/dates";
 import { setOfficeTimezone } from "@/lib/format";
 import { qk } from "@/lib/queries";
 import type { MeResponse, Profile, Role } from "@/lib/types";
@@ -35,6 +36,7 @@ function broadcastAuth(userId: number | null) {
 function apply(me: MeResponse) {
   setCsrfToken(me.csrf_token);
   setOfficeTimezone(me.office_timezone);
+  setLatestTimesheetDate(me.latest_timesheet_date);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

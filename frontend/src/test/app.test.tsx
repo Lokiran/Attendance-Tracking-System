@@ -372,3 +372,18 @@ describe("today panel", () => {
     expect(screen.queryByRole("button", { name: /leave/i })).not.toBeInTheDocument();
   });
 });
+
+describe("default period", () => {
+  it("opens on the latest timesheet month while the current month has none", async () => {
+    const { calls } = mockApi({ "/auth/me": { ...me(), latest_timesheet_date: "2026-09-30" }, ...employeeRoutes() });
+    renderApp("/");
+    expect(await screen.findByText("Your timesheets up to")).toBeInTheDocument();
+    await waitFor(() => expect(calls.some((c) => c.path === "/attendance/employees/5/summary")).toBe(true));
+    const { setLatestTimesheetDate, defaultMonthDate } = await import("@/lib/dates");
+    expect(defaultMonthDate("2026-11-10")).toBe("2026-09-30");
+    setLatestTimesheetDate("2026-11-09");
+    expect(defaultMonthDate("2026-11-10")).toBe("2026-11-10"); // the current month has a timesheet
+    setLatestTimesheetDate(null);
+    expect(defaultMonthDate("2026-11-10")).toBe("2026-11-10");
+  });
+});

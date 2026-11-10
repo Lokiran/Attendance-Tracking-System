@@ -47,6 +47,8 @@ class MeResponse(BaseModel):
     csrf_token: str
     office_timezone: str
     has_reports: bool
+    # Last date any committed timesheet covers: pages open on that month while the current month has none.
+    latest_timesheet_date: date | None = None
 
 
 class ChangePasswordRequest(BaseModel):

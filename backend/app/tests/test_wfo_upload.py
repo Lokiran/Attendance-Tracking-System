@@ -301,7 +301,7 @@ def test_monthly_workbook_imports_and_adds_unknown_people(client, staff, db):
     after = r.json()
     assert after["error_count"] == 0 and after["summary"]["unknown_employees"] == []
     assert after["summary"]["employees_added"] == 1 and after["summary"]["office"] == 8
-    new = db.scalar(select(User).where(User.employee_code == "INTERN - 10001"))
+    new = db.scalar(select(User).where(User.employee_code == "Intern - 10001"))  # kept as written
     assert new.full_name == "New Intern" and new.email == "intern.10001@imported.example.com"
     assert new.role == Role.EMPLOYEE and new.date_joined == date(2026, 10, 1) and new.manager_id is None
     assert db.scalar(select(AuditLog).where(AuditLog.action == "USER_CREATED",

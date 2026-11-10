@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { presetRange, todayInOffice } from "@/lib/dates";
+import { defaultMonthDate, endOfMonth, minDate, presetRange, startOfMonth, todayInOffice } from "@/lib/dates";
 
 /** Filters live in the URL so they survive navigation, reloads and drill-down links. */
 export function useUrlState() {
@@ -29,7 +29,12 @@ export function useUrlState() {
 
 export function useRangeParams(defaultPreset: "this_month" | "last_30" = "this_month") {
   const { get, set, params } = useUrlState();
-  const fallback = presetRange(defaultPreset, todayInOffice());
+  const today = todayInOffice();
+  const month = defaultMonthDate(today);
+  // "This month" means the latest month with an imported timesheet while the current month has none.
+  const fallback = defaultPreset === "this_month" && month !== today
+    ? { start: startOfMonth(month), end: minDate(endOfMonth(month), today) }
+    : presetRange(defaultPreset, today);
   const start = get("start", fallback.start);
   const end = get("end", fallback.end);
   return {

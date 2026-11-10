@@ -517,8 +517,8 @@ def create_employees(db: Session, admin: User, upload_id: int, refs: list[str] |
     created: dict[str, int] = {}
     taken: set[str] = set()
     for u in todo:
-        code = u["employee_ref"].upper()
-        existing = db.scalar(select(User).where(func.upper(User.employee_code) == code))
+        code = u["employee_ref"]  # kept as written in the timesheet ("Intern - 22026"); matching ignores case
+        existing = db.scalar(select(User).where(func.upper(User.employee_code) == code.upper()))
         if existing is not None:  # added since the preview: just link the rows
             created[ref_key(u["employee_ref"])] = existing.id
             continue

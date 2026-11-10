@@ -21,20 +21,20 @@ import {
   MonthPicker,
   OverrideDialog,
   PolicyLine,
-  thisMonth,
   WeeklyProgress,
   WfoCalendar,
   WfoDonut,
   WfoKpis,
 } from "@/components/wfo/WfoParts";
 import { api, ApiError } from "@/lib/api";
+import { defaultMonthDate } from "@/lib/dates";
 import { formatPercent } from "@/lib/format";
 import { useMemberWfo, useMyWfo, useOrgWfo, useTeamWfo } from "@/lib/queries";
 import type { Department, EmployeeWfo, WfoDay, WfoRow, WfoTotals } from "@/lib/types";
 
 function useMonth(): [string, (m: string) => void] {
   const [params, setParams] = useSearchParams();
-  const month = params.get("month") || thisMonth();
+  const month = params.get("month") || defaultMonthDate().slice(0, 7);
   return [month, (m) => setParams((p) => { p.set("month", m); return p; }, { replace: true })];
 }
 
