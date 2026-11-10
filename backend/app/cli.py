@@ -69,6 +69,27 @@ def cmd_create_admin(args) -> int:
     return 0
 
 
+def cmd_wfo_refresh(args) -> int:
+    """Recompute and store WFO classification for a date range (after schedule / holiday changes)."""
+    from datetime import date
+
+    from sqlalchemy import select
+
+    from app.db.session import SessionLocal
+    from app.models import User
+    from app.services import wfo
+    start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
+    if end < start:
+        print("--to must be on or after --from", file=sys.stderr)
+        return 2
+    with SessionLocal() as db:
+        people = list(db.scalars(select(User).where(User.attendance_tracked.is_(True))).unique())
+        written = wfo.refresh_range(db, people, start, end)
+        db.commit()
+    print(f"WFO refreshed for {len(people)} people, {start} to {end}: {written} day record(s) written")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -81,6 +102,10 @@ def main(argv=None) -> int:
     admin.add_argument("--name", required=True)
     admin.add_argument("--code", required=True, help="Employee code, e.g. ADM100")
     admin.set_defaults(func=cmd_create_admin)
+    refresh = sub.add_parser("wfo-refresh", help="Recompute WFO work modes for a date range")
+    refresh.add_argument("--from", dest="start", required=True, help="YYYY-MM-DD")
+    refresh.add_argument("--to", dest="end", required=True, help="YYYY-MM-DD")
+    refresh.set_defaults(func=cmd_wfo_refresh)
     args = parser.parse_args(argv)
     from app.db.base import Base
     from app.db.session import DatabaseNotReady, ensure_sqlite_ready, engine

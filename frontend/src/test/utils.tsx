@@ -20,7 +20,10 @@ export function mockApi(routes: Record<string, Handler>) {
     const url = new URL(String(input), "http://localhost");
     const method = (init.method ?? "GET").toUpperCase();
     const path = url.pathname.replace(/^\/api/, "");
-    calls.push({ method, path, body: init.body ? JSON.parse(String(init.body)) : undefined, headers: (init.headers ?? {}) as Record<string, string> });
+    const body = init.body instanceof FormData
+      ? Object.fromEntries([...init.body.entries()].map(([k, v]) => [k, v instanceof File ? v.name : v]))
+      : init.body ? JSON.parse(String(init.body)) : undefined;
+    calls.push({ method, path, body, headers: (init.headers ?? {}) as Record<string, string> });
     const handler = routes[`${method} ${path}`] ?? (method === "GET" ? routes[path] : undefined);
     if (handler === undefined) {
       return new Response(JSON.stringify({ error: { code: "not_found", message: "Not mocked: " + method + " " + path } }), { status: 404 });

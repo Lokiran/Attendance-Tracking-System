@@ -63,6 +63,9 @@ class AttendancePolicy(Base):
                         name="poll_minutes_range"),
         CheckConstraint("no_data_alert_minutes BETWEEN 5 AND 1440", name="no_data_alert_minutes_range"),
         CheckConstraint("raw_retention_days BETWEEN 7 AND 3650", name="raw_retention_days_range"),
+        CheckConstraint("min_wfo_days_per_week BETWEEN 0 AND 7", name="min_wfo_days_per_week_range"),
+        CheckConstraint("min_wfo_days_per_month BETWEEN 0 AND 31", name="min_wfo_days_per_month_range"),
+        CheckConstraint("min_office_minutes_for_wfo_day BETWEEN 0 AND 1440", name="min_office_minutes_range"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
@@ -92,6 +95,12 @@ class AttendancePolicy(Base):
     no_data_alert_minutes: Mapped[int] = mapped_column(Integer, default=15, server_default=text("15"), nullable=False)
     # Raw Wi-Fi / presence events older than this are purged; daily summaries are kept.
     raw_retention_days: Mapped[int] = mapped_column(Integer, default=90, server_default=text("90"), nullable=False)
+    # WFO policy (migration 0004). A day is a WFO day when its work mode is OFFICE and it has at
+    # least this many office minutes; compliance needs the weekly and monthly minimums (prorated).
+    min_wfo_days_per_week: Mapped[int] = mapped_column(Integer, default=3, server_default=text("3"), nullable=False)
+    min_wfo_days_per_month: Mapped[int] = mapped_column(Integer, default=12, server_default=text("12"), nullable=False)
+    min_office_minutes_for_wfo_day: Mapped[int] = mapped_column(Integer, default=240, server_default=text("240"),
+                                                                nullable=False)
     # Teams availability or activity values that count as working from home.
     wfh_presence_states: Mapped[list[str]] = mapped_column(
         JSON, default=lambda: list(DEFAULT_WFH_PRESENCE_STATES),

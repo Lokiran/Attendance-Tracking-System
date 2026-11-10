@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import {
+  Building,
   Building2,
   CalendarCheck,
   CalendarDays,
@@ -8,6 +9,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileSpreadsheet,
+  FileUp,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -47,12 +49,14 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { to: "/", label: "My dashboard", icon: LayoutDashboard, end: true },
       { to: "/my/requests", label: "My requests", icon: ClipboardList },
+      { to: "/my/wfo", label: "Office days", icon: Building },
     ],
   },
   {
     title: "Team",
     items: [
-      { to: "/team", label: "Team attendance", icon: Users, roles: ["MANAGER", "ADMIN"] },
+      { to: "/team", label: "Team attendance", icon: Users, roles: ["MANAGER", "ADMIN"], end: true },
+      { to: "/team/wfo", label: "Team office days", icon: Building, roles: ["MANAGER", "ADMIN"] },
       { to: "/approvals", label: "Approvals", icon: ClipboardCheck, roles: ["MANAGER", "ADMIN"] },
       { to: "/reports", label: "Reports", icon: FileSpreadsheet, roles: ["MANAGER", "ADMIN"] },
     ],
@@ -61,6 +65,8 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Administration",
     items: [
       { to: "/admin", label: "Organisation", icon: Building2, roles: ["ADMIN"], end: true },
+      { to: "/admin/wfo", label: "Org office days", icon: Building, roles: ["ADMIN"] },
+      { to: "/admin/attendance-import", label: "Import attendance", icon: FileUp, roles: ["ADMIN"] },
       { to: "/admin/hierarchy", label: "Hierarchy", icon: Network, roles: ["ADMIN"] },
       { to: "/admin/employees", label: "Employees", icon: UserCog, roles: ["ADMIN"] },
       { to: "/admin/departments", label: "Departments", icon: Building2, roles: ["ADMIN"] },

@@ -27,6 +27,11 @@ const MyRequests = lazy(() => import("@/pages/MyRequests").then((m) => ({ defaul
 const ProfilePage = lazy(() => import("@/pages/ProfilePage").then((m) => ({ default: m.ProfilePage })));
 const ReportsPage = lazy(() => import("@/pages/ReportsPage").then((m) => ({ default: m.ReportsPage })));
 const TeamDashboard = lazy(() => import("@/pages/TeamDashboard").then((m) => ({ default: m.TeamDashboard })));
+const MyWfoPage = lazy(() => import("@/pages/wfo/WfoPages").then((m) => ({ default: m.MyWfoPage })));
+const MemberWfoPage = lazy(() => import("@/pages/wfo/WfoPages").then((m) => ({ default: m.MemberWfoPage })));
+const TeamWfoPage = lazy(() => import("@/pages/wfo/WfoPages").then((m) => ({ default: m.TeamWfoPage })));
+const OrgWfoPage = lazy(() => import("@/pages/wfo/WfoPages").then((m) => ({ default: m.OrgWfoPage })));
+const AttendanceImportPage = lazy(() => import("@/pages/wfo/AttendanceImportPage").then((m) => ({ default: m.AttendanceImportPage })));
 const DepartmentDashboardPage = lazy(() => import("@/pages/ScopedDashboards").then((m) => ({ default: m.DepartmentDashboardPage })));
 const ManagerDashboardPage = lazy(() => import("@/pages/ScopedDashboards").then((m) => ({ default: m.ManagerDashboardPage })));
 
@@ -52,9 +57,12 @@ export function AppRoutes() {
           <Route element={<AppLayout />}>
             <Route index element={<MyDashboard />} />
             <Route path="my/requests" element={<MyRequests />} />
+            <Route path="my/wfo" element={<MyWfoPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route element={<RequireAuth roles={["MANAGER", "ADMIN"]} />}>
               <Route path="team" element={<TeamDashboard />} />
+              <Route path="team/wfo" element={<TeamWfoPage />} />
+              <Route path="team/wfo/:id" element={<MemberWfoPage />} />
               <Route path="people/:id" element={<EmployeeDetailPage />} />
               <Route path="approvals" element={<ApprovalsPage />} />
               <Route path="reports" element={<ReportsPage />} />
@@ -62,6 +70,9 @@ export function AppRoutes() {
             </Route>
             <Route element={<RequireAuth roles={["ADMIN"]} />}>
               <Route path="admin" element={<OrgDashboard />} />
+              <Route path="admin/wfo" element={<OrgWfoPage />} />
+              <Route path="admin/wfo/:id" element={<MemberWfoPage />} />
+              <Route path="admin/attendance-import" element={<AttendanceImportPage />} />
               <Route path="admin/hierarchy" element={<HierarchyPage />} />
               <Route path="admin/employees" element={<EmployeesAdmin />} />
               <Route path="admin/departments" element={<DepartmentsAdmin />} />

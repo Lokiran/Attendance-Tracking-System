@@ -1,0 +1,20 @@
+{
+  "_comment": "Text values accepted in uploaded attendance / badge files. Matching ignores case, extra spaces, hyphens and underscores. Edit and restart the backend (or set WFO_MAPPING_FILE to another file).",
+  "work_modes": {
+    "OFFICE": ["wfo", "office", "work from office", "in office", "on-site", "onsite", "on site", "present in office", "client site"],
+    "WFH": ["wfh", "remote", "work from home", "home", "working from home", "telework"],
+    "LEAVE": ["leave", "on leave", "pto", "vacation", "sick leave", "sick", "casual leave", "annual leave"],
+    "HOLIDAY": ["holiday", "public holiday", "company holiday"],
+    "WEEKOFF": ["weekoff", "week off", "weekly off", "weekend", "off"]
+  },
+  "badge_sources": ["badge", "swipe", "access card", "card swipe", "door access", "turnstile", "biometric", "office access"],
+  "columns": {
+    "employee": ["employee", "employee id", "employee code", "emp id", "emp code", "emp no", "employee no", "code", "email", "employee email"],
+    "date": ["date", "work date", "attendance date", "day"],
+    "work_mode": ["work mode", "work_mode", "mode", "location", "work location", "wfo wfh"],
+    "hours": ["hours", "worked hours", "work hours", "total hours", "duration", "office hours"],
+    "in_time": ["in", "in time", "check in", "first in", "time in", "swipe in", "entry"],
+    "out_time": ["out", "out time", "check out", "last out", "time out", "swipe out", "exit"],
+    "source": ["source", "data source", "record type", "type"]
+  }
+}

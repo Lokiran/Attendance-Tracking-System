@@ -13,14 +13,69 @@ Privacy: only presence and duration are stored. No browsing data, no traffic, no
 from datetime import date, datetime
 
 from sqlalchemy import JSON, Boolean, CheckConstraint, Date, Enum, ForeignKey, Index, Integer, String, Text, \
-    UniqueConstraint
+    UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core import clock
 from app.db.base import Base, TimestampMixin
 from app.db.types import UTCDateTime
-from app.models.enums import DailyStatus, RequestStatus, WifiEventType
+from app.models.enums import DailyStatus, RequestStatus, UploadStatus, WfoSource, WifiEventType, WorkMode
 from app.models.system import BigId
+
+
+def _mode_enum(name: str) -> Enum:
+    return Enum(WorkMode, native_enum=False, length=16, create_constraint=True, name=name)
+
+
+class AttendanceUpload(Base):
+    """An imported attendance / badge file. Parsed rows are kept, so committing applies exactly
+    what the preview showed (and the import stays traceable afterwards)."""
+
+    __tablename__ = "attendance_uploads"
+    __table_args__ = (Index("ix_attendance_uploads_created", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[UploadStatus] = mapped_column(
+        Enum(UploadStatus, native_enum=False, length=16, create_constraint=True, name="upload_status"),
+        nullable=False, default=UploadStatus.PREVIEW,
+    )
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    summary: Mapped[dict | None] = mapped_column(JSON)          # preview: counts by work mode, conflicts
+    commit_summary: Mapped[dict | None] = mapped_column(JSON)   # what the commit applied / skipped
+    overwrite_overrides: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    uploaded_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: clock.utcnow(), nullable=False)
+    committed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    committed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
+class AttendanceUploadRow(Base):
+    """One parsed row of an upload. ``error`` is set when the row cannot be applied."""
+
+    __tablename__ = "attendance_upload_rows"
+    __table_args__ = (
+        Index("ix_attendance_upload_rows_upload", "upload_id", "row_number"),
+        CheckConstraint("minutes IS NULL OR minutes >= 0", name="minutes_non_negative"),
+    )
+
+    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    upload_id: Mapped[int] = mapped_column(ForeignKey("attendance_uploads.id", ondelete="CASCADE"), nullable=False)
+    row_number: Mapped[int] = mapped_column(Integer, nullable=False)  # as in the file (header = row 1)
+    employee_ref: Mapped[str | None] = mapped_column(String(255))     # employee code or email as written
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    work_date: Mapped[date | None] = mapped_column(Date)
+    raw_work_mode: Mapped[str | None] = mapped_column(String(64))
+    work_mode: Mapped[WorkMode | None] = mapped_column(_mode_enum("upload_row_work_mode"))
+    raw_source: Mapped[str | None] = mapped_column(String(64))
+    is_badge: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    minutes: Mapped[int | None] = mapped_column(Integer)
+    first_in: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_out: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    error: Mapped[str | None] = mapped_column(String(255))
 
 
 class WifiEvent(Base):
@@ -92,6 +147,26 @@ class AttendanceDaily(TimestampMixin, Base):
     # True once an approved correction changed this day; the rollup then leaves the corrected fields alone.
     corrected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     computed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+    # --- WFO (migration 0004) -------------------------------------------------------------------
+    # Result of the classification (app/services/wfo_rules.py). Recomputed whenever this row's
+    # evidence, an override or the day's check-ins change; reads also recompute from the evidence.
+    work_mode: Mapped[WorkMode | None] = mapped_column(_mode_enum("work_mode"))  # NULL: absent / no data
+    wfo_source: Mapped[WfoSource | None] = mapped_column(
+        Enum(WfoSource, native_enum=False, length=20, create_constraint=True, name="wfo_source"))
+    # Human-readable notes when signals disagreed (e.g. "UPLOAD_COLUMN said WFH; office signal from BADGE").
+    conflicts: Mapped[list[str]] = mapped_column(JSON, default=list, server_default=text("'[]'"), nullable=False)
+    # Evidence, one column per source. NULL means "this source says nothing about the day".
+    upload_work_mode: Mapped[WorkMode | None] = mapped_column(_mode_enum("upload_work_mode"))
+    upload_minutes: Mapped[int | None] = mapped_column(Integer)   # hours column of the imported row
+    badge_minutes: Mapped[int | None] = mapped_column(Integer)    # not NULL: badge / swipe rows exist
+    wifi_minutes: Mapped[int | None] = mapped_column(Integer)     # office Wi-Fi minutes (automatic attendance)
+    upload_id: Mapped[int | None] = mapped_column(ForeignKey("attendance_uploads.id", ondelete="SET NULL"))
+    # Admin override (wfo_source MANUAL_OVERRIDE); the audit log keeps who, when, old and new.
+    override_work_mode: Mapped[WorkMode | None] = mapped_column(_mode_enum("override_work_mode"))
+    override_note: Mapped[str | None] = mapped_column(String(500))
+    overridden_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    overridden_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
 
 class AttendanceDailyCorrection(TimestampMixin, Base):

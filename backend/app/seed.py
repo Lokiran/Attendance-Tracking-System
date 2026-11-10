@@ -31,9 +31,10 @@ from app.models import (
     SessionSource,
     SessionStatus,
     User,
+    WorkLocation,
     WorkSchedule,
 )
-from app.services import corrections
+from app.services import corrections, wfo
 from app.services.attendance_data import employee_data, schedule_data
 from app.services.attendance_rules import resolve_schedule, session_net_minutes
 from app.services.policy import get_policy
@@ -339,6 +340,25 @@ def _demo_corrections(db: Session, users: dict[str, User], today: date) -> None:
             corrections.reject(db, reviewer, c.id, "No record of attendance on this date", SEED_CTX)
 
 
+def _demo_work_locations(db: Session, users: dict[str, User], today: date) -> int:
+    """Tag demo check-ins as Office or WFH (only untagged SEED sessions, so re-runs change nothing):
+    most people work from the office Monday to Wednesday, Kiran (EMP005) only on Tuesdays."""
+    tz = office_tz()
+    tagged = 0
+    for code, u in users.items():
+        if not u.attendance_tracked:
+            continue
+        office_days = {1} if code == "EMP005" else {0, 1, 2}
+        for s in db.scalars(select(AttendanceSession).where(AttendanceSession.employee_id == u.id,
+                                                            AttendanceSession.source == SessionSource.SEED,
+                                                            AttendanceSession.work_location.is_(None))):
+            weekday = local_date(s.check_in_at, tz).weekday()
+            s.work_location = WorkLocation.OFFICE if weekday in office_days else WorkLocation.WFH
+            tagged += 1
+    db.flush()
+    return tagged
+
+
 def _reset_demo(db: Session, users: dict[str, User]) -> None:
     ids = [u.id for u in users.values()]
     db.execute(delete(AttendanceCorrection).where(AttendanceCorrection.employee_id.in_(ids)))
@@ -369,5 +389,9 @@ def run(db: Session, *, reset_demo: bool = False, reset_passwords: bool = False)
     created = _generate_attendance(db, users, today, now)
     db.commit()
     _demo_corrections(db, users, today)
+    db.commit()
+    _demo_work_locations(db, users, today)
+    tracked = [u for u in users.values() if u.attendance_tracked]
+    wfo.refresh_range(db, tracked, today - timedelta(days=HISTORY_DAYS), today)
     db.commit()
     return {"users": len(users), "sessions_created": created, "today": today.isoformat()}

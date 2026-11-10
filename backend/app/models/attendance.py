@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
 from app.db.types import UTCDateTime
-from app.models.enums import SessionSource, SessionStatus
+from app.models.enums import SessionSource, SessionStatus, WorkLocation
 
 
 class AttendanceSession(TimestampMixin, Base):
@@ -47,6 +47,9 @@ class AttendanceSession(TimestampMixin, Base):
         Enum(SessionSource, native_enum=False, length=16, create_constraint=True, name="session_source"),
         nullable=False, default=SessionSource.WEB,
     )
+    # Office or WFH, picked by the employee at check-in (a WFO signal); NULL for sessions without a choice.
+    work_location: Mapped[WorkLocation | None] = mapped_column(
+        Enum(WorkLocation, native_enum=False, length=8, create_constraint=True, name="work_location"))
     notes: Mapped[str | None] = mapped_column(String(500))
     voided_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     void_reason: Mapped[str | None] = mapped_column(Text)

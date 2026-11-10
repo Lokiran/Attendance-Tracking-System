@@ -39,7 +39,8 @@ export function buildUrl(path: string, params?: Params): string {
 
 async function request(method: string, path: string, opts: { params?: Params; body?: unknown } = {}) {
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (opts.body !== undefined) headers["Content-Type"] = "application/json";
+  const isForm = opts.body instanceof FormData; // the browser sets the multipart boundary itself
+  if (opts.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   if (!SAFE.has(method)) {
     const token = csrfToken ?? readCookie(CSRF_COOKIE);
     if (token) headers["X-CSRF-Token"] = token;
@@ -50,7 +51,7 @@ async function request(method: string, path: string, opts: { params?: Params; bo
       method,
       headers,
       credentials: "include",
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      body: isForm ? (opts.body as FormData) : opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     });
   } catch {
     throw new ApiError(0, "network_error", "Cannot reach the server. Check your connection and try again.");
@@ -93,6 +94,12 @@ export const api = {
   },
   async del<T>(path: string): Promise<T> {
     return (await request("DELETE", path)).json();
+  },
+  /** Uploads a file as multipart form data (field name "file"), with the CSRF header like any write. */
+  async upload<T>(path: string, file: File): Promise<T> {
+    const form = new FormData();
+    form.append("file", file);
+    return (await request("POST", path, { body: form })).json();
   },
   /** Downloads a CSV (or other attachment) produced by the backend. */
   async download(path: string, params?: Params): Promise<string> {

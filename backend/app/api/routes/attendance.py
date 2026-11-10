@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body, Query
 from app.api.deps import DB, CurrentUser, Ctx, Paging, Range
 from app.models import DayStatus, SessionStatus
 from app.schemas.attendance import (
+    CheckInRequest,
     CheckOutRequest,
     CurrentStatusOut,
     DayDetailOut,
@@ -18,7 +19,7 @@ from app.schemas.attendance import (
     SummaryOut,
 )
 from app.schemas.dashboard import TrendsOut
-from app.services import attendance_service
+from app.services import attendance_service, wfo
 from app.services.dashboard import bucketize
 from app.services.scope import get_viewable_employee
 
@@ -44,8 +45,8 @@ def current(user: CurrentUser, db: DB):
 
 @router.post("/check-in", response_model=SessionOut, status_code=201,
              summary="Start an attendance session at the current server time")
-def check_in(user: CurrentUser, db: DB, ctx: Ctx):
-    return attendance_service.check_in(db, user, ctx)
+def check_in(user: CurrentUser, db: DB, ctx: Ctx, body: Annotated[CheckInRequest | None, Body()] = None):
+    return attendance_service.check_in(db, user, ctx, (body or CheckInRequest()).work_location)
 
 
 @router.post("/check-out", response_model=SessionOut, summary="Close the active session at the current server time")
@@ -58,7 +59,9 @@ def check_out(user: CurrentUser, db: DB, ctx: Ctx,
 def employee_summary(employee_id: int, rng: Range, user: CurrentUser, db: DB):
     employee = get_viewable_employee(db, user, employee_id)
     summary, _ = attendance_service.summary_for(db, employee, rng.start, rng.end)
-    return SummaryOut.of(summary)
+    out = SummaryOut.of(summary)
+    out.wfo = wfo.range_summary(db, employee, rng.start, rng.end)
+    return out
 
 
 @router.get("/employees/{employee_id}/trends", response_model=TrendsOut,

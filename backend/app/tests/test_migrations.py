@@ -24,7 +24,7 @@ def empty_schema():
     reset_schema(engine)
 
 
-HEAD = "0003"
+HEAD = "0004"
 
 
 def test_upgrade_downgrade_reupgrade(empty_schema):
@@ -302,3 +302,68 @@ def test_offline_postgres_0003_sql():
     assert "ts_bucket TIMESTAMP WITH TIME ZONE NOT NULL" in sql
     assert "ck_attendance_policy_half_day_minutes_range CHECK (half_day_minutes >= 0 AND "            "half_day_minutes <= full_day_minutes)" in sql
     assert "DROP TABLE attendance_policy" not in sql  # PostgreSQL alters the settings table in place
+
+
+# --------------------------------------------------------------------------- 0004 (WFO tracking)
+
+DAILY_ROW = ("INSERT INTO attendance_daily (employee_id, work_date, office_minutes, wfh_minutes, status, corrected, "
+             "created_at, updated_at) VALUES (1, '2026-03-09', 480, 0, '{status}', false, '2026-03-09 00:00:00', "
+             "'2026-03-09 00:00:00')")
+
+
+def test_0004_adds_wfo_columns_and_keeps_data(empty_schema):
+    upgrade("0001")
+    _seed_0001_rows()
+    _exec(POLICY_0001)
+    upgrade("0003")
+    _exec(DAILY_ROW.format(status="PRESENT"))
+    sessions, daily = _rows("attendance_sessions"), _rows("attendance_daily")
+    upgrade("0004")
+    width = len(sessions[0])
+    assert [r[:width] for r in _rows("attendance_sessions")] == sessions  # work_location appended as NULL
+    assert [r[:len(daily[0])] for r in _rows("attendance_daily")] == daily
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        assert tuple(conn.execute(text("SELECT min_wfo_days_per_week, min_wfo_days_per_month, "
+                                       "min_office_minutes_for_wfo_day FROM attendance_policy")).one()) == (3, 12, 240)
+        assert conn.execute(text("SELECT conflicts FROM attendance_daily")).scalar() in ("[]", [])
+
+
+def test_0004_constraints(empty_schema):
+    from sqlalchemy.exc import IntegrityError
+    upgrade("0001")
+    _seed_0001_rows()
+    _exec(POLICY_0001)
+    upgrade("0004")
+    _exec(DAILY_ROW.format(status="LEAVE"))  # LEAVE is now a valid status
+    with pytest.raises(IntegrityError):  # WFH moved to work_mode
+        _exec(DAILY_ROW.format(status="WFH").replace("2026-03-09'", "2026-03-10'", 1))
+    with pytest.raises(IntegrityError):
+        _exec("UPDATE attendance_daily SET work_mode = 'HYBRID'")
+    _exec("UPDATE attendance_daily SET work_mode = 'OFFICE', wfo_source = 'BADGE'")
+    with pytest.raises(IntegrityError):
+        _exec("UPDATE attendance_sessions SET work_location = 'MOON' WHERE id = 1")
+    _exec("UPDATE attendance_sessions SET work_location = 'OFFICE' WHERE id = 1")
+    with pytest.raises(IntegrityError):
+        _exec("UPDATE attendance_policy SET min_wfo_days_per_week = 8")
+
+
+def test_0004_guards_both_directions(empty_schema):
+    upgrade("0001")
+    _seed_0001_rows()
+    upgrade("0003")
+    _exec(DAILY_ROW.format(status="WFH"))
+    with pytest.raises(RuntimeError, match="retired WFH status"):
+        upgrade("0004")
+    assert current_revision(engine) == "0003"
+    _exec("UPDATE attendance_daily SET status = 'PRESENT'")
+    upgrade("0004")
+    _exec("UPDATE attendance_sessions SET work_location = 'WFH' WHERE id = 1")
+    with pytest.raises(RuntimeError, match="Cannot downgrade 0004"):
+        downgrade("0003")
+    assert current_revision(engine) == "0004"
+    _exec("UPDATE attendance_sessions SET work_location = NULL")
+    downgrade("0003")
+    assert "attendance_uploads" not in inspect(engine).get_table_names()
+    assert "work_location" not in {c["name"] for c in inspect(engine).get_columns("attendance_sessions")}
+    upgrade("0004")

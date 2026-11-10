@@ -1,4 +1,5 @@
-import { AlertTriangle, ClipboardPen, ListChecks, LogIn, LogOut } from "lucide-react";
+import { clsx } from "clsx";
+import { AlertTriangle, Building, ClipboardPen, Home, ListChecks, LogIn, LogOut } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
@@ -12,7 +13,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
 import { formatDate, formatDateTime, formatMinutes, formatTime, getOfficeTimezone } from "@/lib/format";
 import { useCheckIn, useCheckOut, useCurrentStatus } from "@/lib/queries";
-import type { Profile } from "@/lib/types";
+import type { Profile, WorkLocation } from "@/lib/types";
 
 function useElapsed(checkIn: string | null | undefined, serverTime: string | undefined, fetchedAt: number) {
   // Server time anchors the clock so a wrong device clock does not distort the display.
@@ -25,6 +26,16 @@ function useElapsed(checkIn: string | null | undefined, serverTime: string | und
   }, [checkIn]);
   if (!checkIn) return null;
   return Math.max(0, now + offset - new Date(checkIn).getTime());
+}
+
+const LOCATION_KEY = "ats-work-location";
+
+function readLocation(): WorkLocation {
+  try {
+    return localStorage.getItem(LOCATION_KEY) === "WFH" ? "WFH" : "OFFICE";
+  } catch {
+    return "OFFICE";
+  }
 }
 
 function clock(ms: number) {
@@ -64,6 +75,15 @@ export function AttendanceActionCard({ user, onRequestCorrection, onFixPastDay }
   const checkOut = useCheckOut();
   const toast = useToast();
   const [confirm, setConfirm] = useState(false);
+  const [location, setLocation] = useState<WorkLocation>(readLocation);
+  const chooseLocation = (loc: WorkLocation) => {
+    setLocation(loc);
+    try {
+      localStorage.setItem(LOCATION_KEY, loc); // per-device convenience only
+    } catch {
+      /* storage unavailable: the choice still applies to this check-in */
+    }
+  };
   const [breakMin, setBreakMin] = useState("0");
   const active = status.data?.active_session ?? null;
   const elapsed = useElapsed(active?.check_in_at, status.data?.server_time, status.dataUpdatedAt);
@@ -90,20 +110,39 @@ export function AttendanceActionCard({ user, onRequestCorrection, onFixPastDay }
       Check out
     </Button>
   ) : (
-    <Button
-      size="lg"
-      icon={<LogIn className="size-4" />}
-      loading={checkIn.isPending}
-      disabled={pending}
-      onClick={() =>
-        checkIn.mutate(undefined, {
-          onSuccess: (sess) => toast.success("Checked in at " + formatTime(sess.check_in_at)),
-          onError: (e) => toast.error(e),
-        })
-      }
-    >
-      Check in
-    </Button>
+    <div className="flex flex-wrap items-center gap-2">
+      <div role="group" aria-label="Where are you working today?" className="inline-flex rounded-lg border border-line p-0.5">
+        {(["OFFICE", "WFH"] as WorkLocation[]).map((loc) => (
+          <button
+            key={loc}
+            type="button"
+            aria-pressed={location === loc}
+            onClick={() => chooseLocation(loc)}
+            className={clsx(
+              "inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors",
+              location === loc ? "bg-surface text-ink shadow-sm" : "text-ink-3 hover:text-ink",
+            )}
+          >
+            {loc === "OFFICE" ? <Building className="size-4" aria-hidden /> : <Home className="size-4" aria-hidden />}
+            {loc === "OFFICE" ? "Office" : "WFH"}
+          </button>
+        ))}
+      </div>
+      <Button
+        size="lg"
+        icon={<LogIn className="size-4" />}
+        loading={checkIn.isPending}
+        disabled={pending}
+        onClick={() =>
+          checkIn.mutate(location, {
+            onSuccess: (sess) => toast.success(`Checked in at ${formatTime(sess.check_in_at)} · ${location === "OFFICE" ? "Office" : "WFH"}`),
+            onError: (e) => toast.error(e),
+          })
+        }
+      >
+        Check in
+      </Button>
+    </div>
   );
 
   return (
@@ -146,7 +185,7 @@ export function AttendanceActionCard({ user, onRequestCorrection, onFixPastDay }
         <Tile
           label={active ? "Checked in at" : lastOut ? "Last check-out" : "Checked in at"}
           value={active ? formatTime(active.check_in_at) : lastOut ? formatTime(lastOut) : "—"}
-          hint={active ? "Recorded by the server" : lastOut ? "You're checked out" : "You haven't checked in yet"}
+          hint={active ? (active.work_location ? `Working from ${active.work_location === "OFFICE" ? "the office" : "home"}` : "Recorded by the server") : lastOut ? "You're checked out" : "You haven't checked in yet"}
         />
         <Tile
           label="Time in office"

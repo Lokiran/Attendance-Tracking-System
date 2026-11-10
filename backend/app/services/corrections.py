@@ -24,7 +24,7 @@ from app.models import (
     SessionStatus,
     User,
 )
-from app.services import audit
+from app.services import audit, wfo
 from app.services.attendance_data import session_data
 from app.services.attendance_rules import InvalidSessionTimes, is_unresolved, session_net_minutes
 from app.services.policy import get_policy, policy_data
@@ -187,6 +187,7 @@ def approve(db: Session, reviewer: User, correction_id: int, comment: str | None
         net_minutes=session_net_minutes(c.requested_check_in_at, c.requested_check_out_at,
                                         c.requested_break_minutes),
         status=SessionStatus.COMPLETED, source=SessionSource.CORRECTION, notes=f"Correction #{c.id}",
+        work_location=original.work_location if original else None,  # a time fix keeps the Office / WFH choice
     )
     db.add(new_session)
     try:
@@ -201,6 +202,9 @@ def approve(db: Session, reviewer: User, correction_id: int, comment: str | None
     c.resulting_session_id = new_session.id
     audit.record(db, actor_id=reviewer.id, action="CORRECTION_APPROVED", entity_type="attendance_correction",
                  entity_id=c.id, before=before, after=correction_snapshot(c), ctx=ctx)
+    tz = office_tz()
+    days = {local_date(new_session.check_in_at, tz)} | ({local_date(original.check_in_at, tz)} if original else set())
+    wfo.refresh_days(db, db.get(User, c.employee_id), days)
     db.commit()
     db.refresh(c)
     return c

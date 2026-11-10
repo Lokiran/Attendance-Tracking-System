@@ -48,6 +48,10 @@ Legend: `[x]` done and verified · `[ ]` open · `[~]` blocked (reason given)
 
 ## Phase 2: Wi-Fi signal
 
+> WFO tracking (docs/wfo.md) already reads `attendance_daily.wifi_minutes` as its Wi-Fi signal. The daily rollup
+> must write office Wi-Fi minutes there (with `first_in` / `last_out`) and call `wfo.refresh_days`, so WFO
+> picks Wi-Fi up with no further changes.
+
 - [ ] `WifiSource` adapter interface: `fetch_events(since)`
 - [ ] `MockWifiSource` (realistic days: arrival, lunch, roaming between APs, laptop sleep, overnight)
 - [ ] Stubs: RADIUS accounting receiver, Cisco, Aruba, Meraki

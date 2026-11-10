@@ -66,6 +66,7 @@ export interface Session {
   notes: string | null;
   voided_at: string | null;
   void_reason: string | null;
+  work_location?: WorkLocation | null;
 }
 
 export interface DayRecord {
@@ -354,4 +355,149 @@ export interface TeamMember extends UserBrief {
   manager_id: number | null;
   manager_name: string | null;
   is_active: boolean;
+}
+
+// ------------------------------------------------------------------ WFO (work from office)
+
+export type WorkMode = "OFFICE" | "WFH" | "LEAVE" | "HOLIDAY" | "WEEKOFF";
+export type WfoSource = "MANUAL_OVERRIDE" | "UPLOAD_COLUMN" | "BADGE" | "WIFI" | "CHECK_IN" | "INFERRED" | "CALENDAR";
+export type Compliance = "COMPLIANT" | "NON_COMPLIANT";
+export type WorkLocation = "OFFICE" | "WFH";
+
+export interface WfoPolicy {
+  min_days_per_week: number;
+  min_days_per_month: number;
+  min_office_minutes: number;
+}
+
+export interface WfoSummary {
+  working_days: number;
+  standard_days: number;
+  wfo_days: number;
+  wfh_days: number;
+  office_days_below_minimum: number;
+  leave_days: number;
+  holiday_days: number;
+  weekoff_days: number;
+  required_days: number;
+  shortfall_days: number;
+  wfo_percentage: number | null;
+  compliance: Compliance;
+}
+
+export interface WfoWeek {
+  week_start: string;
+  week_end: string;
+  label: string;
+  working_days: number;
+  wfo_days: number;
+  required: number;
+  status: "MET" | "SHORT" | "IN_PROGRESS" | "UPCOMING";
+  shortfall: number;
+}
+
+export interface WfoEmployee {
+  id: number;
+  employee_code: string;
+  full_name: string;
+  department_name: string | null;
+  manager_id: number | null;
+  manager_name: string | null;
+}
+
+export interface WfoDay {
+  date: string;
+  work_mode: WorkMode | null;
+  wfo_source: WfoSource | null;
+  is_wfo_day: boolean;
+  office_minutes: number;
+  wfh_minutes: number;
+  conflicts: string[];
+  scheduled: boolean;
+  overridden: boolean;
+  override_note: string | null;
+  in_progress: boolean;
+  future: boolean;
+}
+
+export interface EmployeeWfo {
+  employee: WfoEmployee;
+  month: string;
+  start: string;
+  end: string;
+  today: string;
+  policy: WfoPolicy;
+  summary: WfoSummary;
+  weekly_wfo_breakdown: WfoWeek[];
+  days: WfoDay[];
+}
+
+export interface WfoRow extends WfoSummary {
+  employee: WfoEmployee;
+}
+
+export interface WfoTotals {
+  headcount: number;
+  working_days: number;
+  wfo_days: number;
+  wfh_days: number;
+  wfo_percentage: number | null;
+  compliant: number;
+  non_compliant: number;
+}
+
+export interface TeamWfo {
+  month: string;
+  start: string;
+  end: string;
+  policy: WfoPolicy;
+  totals: WfoTotals;
+  rows: WfoRow[];
+}
+
+export interface OrgWfo extends Omit<TeamWfo, "rows"> {
+  groups: { manager_id: number | null; manager_name: string; department_name: string | null; totals: WfoTotals; rows: WfoRow[] }[];
+}
+
+export interface UploadConflict {
+  employee_code: string;
+  full_name: string;
+  date: string;
+  conflicts: string[];
+  rows: number[];
+}
+
+export interface AttendanceUpload {
+  id: number;
+  filename: string;
+  status: "PREVIEW" | "COMMITTED" | "DISCARDED";
+  file_size: number;
+  row_count: number;
+  error_count: number;
+  summary: {
+    columns: Record<string, string>;
+    rows: number;
+    valid_rows: number;
+    error_rows: number;
+    badge_rows: number;
+    duplicate_rows: number;
+    employee_days: number;
+    employees: number;
+    new_days: number;
+    by_work_mode: Record<string, number>;
+    office: number;
+    wfh: number;
+    office_below_minimum: number;
+    conflict_count: number;
+    conflicts: UploadConflict[];
+    protected_overrides: number;
+    errors: { row: number; employee: string | null; error: string }[];
+    date_from: string | null;
+    date_to: string | null;
+  } | null;
+  commit_summary: { applied_days: number; created_days: number; skipped_overrides: number; overrides_overwritten: number; error_rows: number } | null;
+  overwrite_overrides: boolean;
+  uploaded_by_name: string | null;
+  created_at: string;
+  committed_at: string | null;
 }

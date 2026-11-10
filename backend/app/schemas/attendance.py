@@ -2,8 +2,9 @@ from datetime import date, datetime, time
 
 from pydantic import BaseModel, Field
 
-from app.models import DayStatus, SessionSource, SessionStatus
+from app.models import DayStatus, SessionSource, SessionStatus, WorkLocation
 from app.schemas.common import ORMModel
+from app.schemas.wfo import WfoRangeSummary
 from app.services.attendance_rules import DayRecord, Summary
 
 
@@ -17,8 +18,13 @@ class SessionOut(ORMModel):
     status: SessionStatus
     source: SessionSource
     notes: str | None
+    work_location: WorkLocation | None = None
     voided_at: datetime | None
     void_reason: str | None
+
+
+class CheckInRequest(BaseModel):
+    work_location: WorkLocation | None = Field(None, description="Office or WFH; used for WFO tracking")
 
 
 class CheckOutRequest(BaseModel):
@@ -74,6 +80,8 @@ class SummaryOut(BaseModel):
     attended_days_for_average: int
     unresolved_sessions: int
     late_days: int
+    # WFO figures for the same range (wfo_days, wfh_days, wfo_percentage, weekly breakdown, compliance ...)
+    wfo: WfoRangeSummary | None = None
 
     @classmethod
     def of(cls, s: Summary) -> "SummaryOut":

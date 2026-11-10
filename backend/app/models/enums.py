@@ -32,14 +32,46 @@ class WifiEventType(StrEnum):
 
 
 class DailyStatus(StrEnum):
-    """Status of an automatic attendance day (thresholds come from settings)."""
-    PRESENT = "PRESENT"      # office (or WFH) minutes >= full-day minutes
+    """How much of a day was worked (thresholds from settings). Where it was worked is ``WorkMode``."""
+    PRESENT = "PRESENT"      # office + WFH minutes >= full-day minutes
     HALF_DAY = "HALF_DAY"    # >= half-day minutes
     ABSENT = "ABSENT"        # scheduled working day, below half-day minutes
-    WFH = "WFH"              # no office Wi-Fi; Teams presence counted as working from home
+    LEAVE = "LEAVE"          # only from an imported file or an Admin override (no leave requests)
     HOLIDAY = "HOLIDAY"
     WEEKEND = "WEEKEND"
     NO_DATA = "NO_DATA"      # a collector was down; never shown as Absent
+
+
+class WorkMode(StrEnum):
+    """Where a day was worked (WFO tracking)."""
+    OFFICE = "OFFICE"        # WFO
+    WFH = "WFH"
+    LEAVE = "LEAVE"          # only from an imported file or an Admin override
+    HOLIDAY = "HOLIDAY"
+    WEEKOFF = "WEEKOFF"
+
+
+class WfoSource(StrEnum):
+    """Which signal decided a day's work mode (highest priority first)."""
+    MANUAL_OVERRIDE = "MANUAL_OVERRIDE"  # an Admin set it; always wins
+    UPLOAD_COLUMN = "UPLOAD_COLUMN"      # work mode / location column of an imported file
+    BADGE = "BADGE"                      # badge / swipe / office-access rows of an imported file
+    WIFI = "WIFI"                        # office Wi-Fi (automatic attendance)
+    CHECK_IN = "CHECK_IN"                # Office / WFH chosen by the employee at check-in
+    INFERRED = "INFERRED"                # worked hours with no office signal: WFH
+    CALENDAR = "CALENDAR"                # holiday or weekly off from schedules and holidays
+
+
+class WorkLocation(StrEnum):
+    """Office or WFH, picked by the employee when checking in."""
+    OFFICE = "OFFICE"
+    WFH = "WFH"
+
+
+class UploadStatus(StrEnum):
+    PREVIEW = "PREVIEW"      # parsed and validated; nothing applied yet
+    COMMITTED = "COMMITTED"
+    DISCARDED = "DISCARDED"
 
 
 class DayStatus(StrEnum):

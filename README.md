@@ -236,6 +236,26 @@ the password is prompted, not passed on the command line:
 python -m app.cli create-admin --email admin@yourcompany.com --name "Jane Doe" --code ADM001
 ```
 
+## WFO (work from office) tracking
+
+Every employee-day gets a work mode: Office, WFH, Leave, Holiday or Weekly off. Monthly WFO days, WFO %,
+weekly progress ("2 of 3 days") and policy compliance are computed from those days.
+
+* **Signals**, highest priority first: an Admin override; the work-mode column of an imported file; badge /
+  swipe rows; office Wi-Fi; Office / WFH chosen at check-in. Worked hours with no office signal count as WFH.
+* **Pages:** *Office days* (everyone), *Team office days* (managers), *Org office days* and *Import attendance*
+  (admin, with Excel export and day overrides).
+* **Imports:** CSV or Excel with a preview first; examples are in `samples/`. Accepted header names and values
+  are in `backend/config/wfo_mapping.json`.
+* **Policy:** 3 office days a week, 12 a month, at least 4 h in the office for a day to count (editable).
+
+Rules, API, upload format and assumptions: [docs/wfo.md](docs/wfo.md). After changing schedules or
+holidays, recompute stored work modes with:
+
+```powershell
+python -m app.cli wfo-refresh --from 2026-10-01 --to 2026-10-31
+```
+
 ## Signing in
 
 Three methods, each switched on by configuration. The login page shows only the enabled ones
@@ -280,6 +300,7 @@ over the file. Templates: `backend\.env.example` (PostgreSQL) and `backend\.env.
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated |
 | `LOGIN_MAX_FAILURES` / `LOGIN_WINDOW_MINUTES` | 5 / 15 | Brute-force throttling |
 | `TRUST_PROXY_HEADERS` | `false` | Only behind a trusted reverse proxy |
+| `WFO_MAPPING_FILE` | `config\wfo_mapping.json` | Accepted header names and work-mode / badge values for WFO imports (relative to `backend\`) |
 | `PASSWORD_LOGIN_ENABLED` | `true` | Email/password sign-in. Turn off once Microsoft sign-in is live |
 | `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` / `ENTRA_CLIENT_SECRET` / `ENTRA_REDIRECT_URI` | — | Microsoft Entra ID sign-in; set all four or none. See [Signing in](#signing-in) |
 | `ENTRA_AUTHORITY` | `https://login.microsoftonline.com` | Only for sovereign clouds |

@@ -18,9 +18,10 @@ from app.models import (
     SessionSource,
     SessionStatus,
     User,
+    WorkLocation,
     WorkSchedule,
 )
-from app.services import audit
+from app.services import audit, wfo
 from app.services.attendance_data import compute_records, employee_data, schedule_data, session_data
 from app.services.attendance_rules import (
     DayRecord,
@@ -57,7 +58,8 @@ def _mark_missing_checkout(db: Session, s: AttendanceSession, ctx: RequestContex
                  entity_id=s.id, after={"check_in_at": s.check_in_at, "employee_id": s.employee_id}, ctx=ctx)
 
 
-def check_in(db: Session, user: User, ctx: RequestContext) -> AttendanceSession:
+def check_in(db: Session, user: User, ctx: RequestContext,
+             work_location: WorkLocation | None = None) -> AttendanceSession:
     employee = _lock_employee(db, user.id)
     if not employee.is_active:
         raise Forbidden("Inactive accounts cannot record attendance")
@@ -85,9 +87,10 @@ def check_in(db: Session, user: User, ctx: RequestContext) -> AttendanceSession:
         raise Conflict("A recorded session already covers the current time", code="session_overlap")
 
     session = AttendanceSession(employee_id=employee.id, check_in_at=now, status=SessionStatus.OPEN,
-                                source=SessionSource.WEB, break_minutes=0)
+                                source=SessionSource.WEB, break_minutes=0, work_location=work_location)
     db.add(session)
     try:
+        wfo.refresh_days(db, employee, {local_date(now, tz)})  # same transaction as the check-in
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -135,6 +138,7 @@ def check_out(db: Session, user: User, break_minutes: int, ctx: RequestContext) 
     session.net_minutes = net
     session.status = SessionStatus.COMPLETED
     try:
+        wfo.refresh_days(db, employee, {local_date(session.check_in_at, tz)})
         db.commit()
     except IntegrityError:
         db.rollback()
