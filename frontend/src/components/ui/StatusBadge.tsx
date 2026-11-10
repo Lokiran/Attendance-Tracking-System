@@ -4,28 +4,31 @@ import {
   CalendarOff,
   CheckCircle2,
   CircleDashed,
-  Clock,
+  Home,
   MinusCircle,
   PartyPopper,
+  Plane,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
 
-import { exceptionLabel, STATUS_LABEL, titleCase } from "@/lib/format";
-import type { DayStatus, RequestStatus } from "@/lib/types";
+import { exceptionLabel, STATUS_LABEL } from "@/lib/format";
+import type { DayStatus } from "@/lib/types";
 
-/** Colour token, icon and label for each day status: colour is never the only signal. */
+/** Colour token, icon and label for each day status: colour is never the only signal. WFH and leave use the
+ *  same colours as the office-days (WFO) pages. */
 export const STATUS_META: Record<DayStatus, { color: string; icon: LucideIcon }> = {
   PRESENT: { color: "var(--st-present)", icon: CheckCircle2 },
+  WFH: { color: "var(--st-wfh)", icon: Home },
   ABSENT: { color: "var(--st-absent)", icon: XCircle },
+  LEAVE: { color: "var(--st-leave)", icon: Plane },
   HOLIDAY: { color: "var(--st-holiday)", icon: PartyPopper },
   WEEKEND: { color: "var(--st-off)", icon: CalendarOff },
-  INCOMPLETE: { color: "var(--st-incomplete)", icon: AlertTriangle },
-  NOT_YET_CHECKED_IN: { color: "var(--st-pending)", icon: CircleDashed },
+  NO_TIMESHEET: { color: "var(--st-pending)", icon: CircleDashed },
   NOT_SCHEDULED: { color: "var(--st-off)", icon: MinusCircle },
 };
 
-export function StatusBadge({ status, live, className }: { status: DayStatus | null; live?: boolean; className?: string }) {
+export function StatusBadge({ status, className }: { status: DayStatus | null; className?: string }) {
   if (!status) return <span className="text-xs text-ink-3">—</span>;
   const { color, icon: Icon } = STATUS_META[status];
   return (
@@ -37,24 +40,6 @@ export function StatusBadge({ status, live, className }: { status: DayStatus | n
     >
       <Icon className="size-3.5" style={{ color }} aria-hidden />
       {STATUS_LABEL[status]}
-      {live && <span className="text-ink-3">· in office</span>}
-    </span>
-  );
-}
-
-const REQUEST_META: Record<RequestStatus, { color: string; icon: LucideIcon }> = {
-  PENDING: { color: "var(--st-incomplete)", icon: Clock },
-  APPROVED: { color: "var(--good)", icon: CheckCircle2 },
-  REJECTED: { color: "var(--critical)", icon: XCircle },
-  CANCELLED: { color: "var(--st-pending)", icon: MinusCircle },
-};
-
-export function RequestBadge({ status }: { status: RequestStatus }) {
-  const { color, icon: Icon } = REQUEST_META[status];
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink">
-      <Icon className="size-3.5" style={{ color }} aria-hidden />
-      {titleCase(status)}
     </span>
   );
 }

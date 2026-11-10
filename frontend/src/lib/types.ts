@@ -1,16 +1,16 @@
 // Shapes returned by the FastAPI backend (see /api/docs).
 
 export type Role = "EMPLOYEE" | "MANAGER" | "ADMIN";
+/** Computed per employee-day from the imported timesheets. */
 export type DayStatus =
   | "PRESENT"
+  | "WFH"
   | "ABSENT"
+  | "LEAVE"
   | "HOLIDAY"
   | "WEEKEND"
-  | "INCOMPLETE"
-  | "NOT_YET_CHECKED_IN"
+  | "NO_TIMESHEET"
   | "NOT_SCHEDULED";
-export type SessionStatus = "OPEN" | "COMPLETED" | "MISSING_CHECKOUT" | "VOIDED";
-export type RequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 
 export interface Page<T> {
   items: T[];
@@ -54,34 +54,18 @@ export interface MeResponse {
   has_reports: boolean;
 }
 
-export interface Session {
-  id: number;
-  employee_id: number;
-  check_in_at: string;
-  check_out_at: string | null;
-  break_minutes: number;
-  net_minutes: number | null;
-  status: SessionStatus;
-  source: string;
-  notes: string | null;
-  voided_at: string | null;
-  void_reason: string | null;
-  work_location?: WorkLocation | null;
-}
-
 export interface DayRecord {
   date: string;
   status: DayStatus;
   expected: boolean;
   scheduled_workday: boolean;
   required_minutes: number;
+  /** Office minutes from the timesheet (0 when the timesheet has no hours for the day). */
   net_minutes: number;
-  session_count: number;
-  completed_sessions: number;
-  first_check_in: string | null;
-  last_check_out: string | null;
-  has_active_session: boolean;
-  unresolved_sessions: number;
+  hours_known: boolean;
+  work_mode: WorkMode | null;
+  first_in: string | null;
+  last_out: string | null;
   holiday_name: string | null;
   exceptions: string[];
 }
@@ -94,18 +78,20 @@ export interface Summary {
   present_expected_days: number;
   extra_present_days: number;
   absent_days: number;
+  wfh_days: number;
+  leave_days: number;
   holiday_days: number;
   weekend_days: number;
   not_scheduled_days: number;
-  incomplete_days: number;
-  not_yet_checked_in_days: number;
+  no_timesheet_days: number;
   net_minutes: number;
   required_minutes: number;
+  /** Present days whose hours the timesheet recorded, and their shift minutes. */
+  hours_days: number;
+  hours_required_minutes: number;
   variance_minutes: number;
   average_net_minutes: number | null;
   attendance_percentage: number | null;
-  attended_days_for_average: number;
-  unresolved_sessions: number;
   late_days: number;
 }
 
@@ -113,9 +99,6 @@ export interface CurrentStatus {
   server_time: string;
   today: string;
   office_timezone: string;
-  today_record: DayRecord | null;
-  active_session: Session | null;
-  unresolved_session: Session | null;
   schedule: {
     name: string;
     start_time: string;
@@ -123,13 +106,31 @@ export interface CurrentStatus {
     required_minutes: number;
     working_days: number[];
   } | null;
-  max_session_minutes: number;
+  /** Last date any committed timesheet covers, and the last date one that lists me covers. */
+  timesheet_through: string | null;
+  my_timesheet_through: string | null;
+  last_import_at: string | null;
+}
+
+export interface TimesheetEntry {
+  work_mode: WorkMode | null;
+  wfo_source: WfoSource | null;
+  upload_work_mode: WorkMode | null;
+  upload_minutes: number | null;
+  badge_minutes: number | null;
+  first_in: string | null;
+  last_out: string | null;
+  upload_filename: string | null;
+  override_work_mode: WorkMode | null;
+  override_note: string | null;
+  overridden_by_name: string | null;
+  overridden_at: string | null;
+  conflicts: string[];
 }
 
 export interface DayDetail {
   record: DayRecord | null;
-  sessions: Session[];
-  voided_sessions: Session[];
+  timesheet: TimesheetEntry | null;
 }
 
 export interface TrendBucket {
@@ -140,12 +141,13 @@ export interface TrendBucket {
   present_expected: number;
   present: number;
   absent: number;
-  incomplete: number;
+  wfh: number;
   net_minutes: number;
   required_minutes: number;
+  hours_required_minutes: number;
+  /** Present days with recorded hours. */
   attended: number;
   late: number;
-  missing_checkout: number;
   short_hours: number;
   attendance_percentage: number | null;
   average_net_minutes: number | null;
@@ -158,24 +160,26 @@ export interface Trends {
 
 export interface Snapshot {
   present: number;
+  wfh: number;
   absent: number;
-  not_checked_in: number;
-  incomplete: number;
+  leave: number;
+  no_timesheet: number;
   off: number;
-  checked_in_now: number;
 }
 export interface PeriodStats {
   expected_days: number;
   present_expected_days: number;
   present_days: number;
   absent_days: number;
-  incomplete_days: number;
+  wfh_days: number;
+  leave_days: number;
+  no_timesheet_days: number;
   late_days: number;
-  unresolved_sessions: number;
   net_minutes: number;
   required_minutes: number;
+  hours_days: number;
+  hours_required_minutes: number;
   variance_minutes: number;
-  attended_days_for_average: number;
   average_net_minutes: number | null;
   attendance_percentage: number | null;
 }
@@ -189,7 +193,7 @@ export interface Overview {
   period: PeriodStats;
   /** People per attendance band over the whole scope (never a sample). */
   attendance_bands: { label: string; count: number }[];
-  pending_corrections: number;
+  timesheet_through: string | null;
 }
 
 export interface EmployeeRow {
@@ -205,10 +209,11 @@ export interface EmployeeRow {
   manager_name: string | null;
   day: {
     status: DayStatus | null;
-    first_check_in: string | null;
-    last_check_out: string | null;
+    first_in: string | null;
+    last_out: string | null;
     net_minutes: number;
-    has_active_session: boolean;
+    hours_known: boolean;
+    work_mode: WorkMode | null;
     exceptions: string[];
   };
   period: PeriodStats;
@@ -223,9 +228,10 @@ export interface ExceptionRow {
   date: string;
   status: DayStatus;
   exceptions: string[];
-  first_check_in: string | null;
-  last_check_out: string | null;
+  first_in: string | null;
+  last_out: string | null;
   net_minutes: number;
+  hours_known: boolean;
   required_minutes: number;
 }
 export interface ExceptionsResponse extends Page<ExceptionRow> {
@@ -268,25 +274,6 @@ export interface HierarchyDepartment {
   head: { id: number; full_name: string } | null;
   member_count: number;
   nodes: HierarchyNode[];
-}
-
-export interface Correction {
-  id: number;
-  employee: UserBrief;
-  attendance_date: string;
-  request_type: "ADD_SESSION" | "MODIFY_SESSION";
-  original_session_id: number | null;
-  original_values: Record<string, unknown> | null;
-  requested_check_in_at: string;
-  requested_check_out_at: string;
-  requested_break_minutes: number;
-  reason: string;
-  status: RequestStatus;
-  reviewed_by: UserBrief | null;
-  reviewer_comment: string | null;
-  reviewed_at: string | null;
-  resulting_session_id: number | null;
-  created_at: string;
 }
 
 export interface AdminUser extends Profile {
@@ -362,7 +349,6 @@ export interface TeamMember extends UserBrief {
 export type WorkMode = "OFFICE" | "WFH" | "LEAVE" | "HOLIDAY" | "WEEKOFF";
 export type WfoSource = "MANUAL_OVERRIDE" | "UPLOAD_COLUMN" | "BADGE" | "WIFI" | "CHECK_IN" | "INFERRED" | "CALENDAR";
 export type Compliance = "COMPLIANT" | "NON_COMPLIANT";
-export type WorkLocation = "OFFICE" | "WFH";
 
 export interface WfoPolicy {
   min_days_per_week: number;
@@ -517,7 +503,10 @@ export interface AttendanceUpload {
     blank_rows?: number;
     employees_added?: number;
   } | null;
-  commit_summary: { applied_days: number; created_days: number; skipped_overrides: number; overrides_overwritten: number; error_rows: number } | null;
+  commit_summary: { applied_days: number; created_days: number; skipped_overrides: number; overrides_overwritten: number; error_rows: number; period_start?: string | null; period_end?: string | null } | null;
+  /** Dates this timesheet covers once committed. */
+  period_start?: string | null;
+  period_end?: string | null;
   overwrite_overrides: boolean;
   uploaded_by_name: string | null;
   created_at: string;

@@ -45,12 +45,8 @@ def test_manager_scope_enforced_by_api_on_postgres(client, org):
     assert client.get("/api/dashboard/overview", params=RANGE).status_code == 403
 
 
-def test_review_outside_scope_is_rejected_on_postgres(client, org):
-    h = login(client, org.arjun)
-    cid = client.post("/api/corrections", headers=h, json={
-        "attendance_date": "2026-03-09", "check_in_time": "09:30", "check_out_time": "18:00",
-        "break_minutes": 60, "reason": "Badge reader outage"}).json()["id"]
-    h = login(client, org.priya)
-    assert client.post(f"/api/corrections/{cid}/approve", headers=h, json={}).status_code == 404
-    h = login(client, org.anil)
-    assert client.post(f"/api/corrections/{cid}/approve", headers=h, json={}).status_code == 200
+def test_day_detail_outside_scope_is_rejected_on_postgres(client, org):
+    login(client, org.priya)
+    assert client.get(f"/api/attendance/employees/{org.arjun.id}/days/2026-03-09").status_code in (403, 404)
+    login(client, org.anil)
+    assert client.get(f"/api/attendance/employees/{org.arjun.id}/days/2026-03-09").status_code == 200

@@ -21,10 +21,11 @@ policy figures (WFO days, WFO %, weekly progress, compliance, shortfall) are com
 | `override_work_mode`, `override_note`, `overridden_by_id`, `overridden_at` | Admin override; the audit log keeps old and new values |
 | `office_minutes`, `wfh_minutes`, `status` | Minutes by mode, and Present / Half-day / Absent / Leave / Holiday / Weekend |
 
-`attendance_sessions.work_location` stores the Office / WFH choice an employee makes at check-in.
+Check-in no longer exists (attendance comes from imported timesheets); `attendance_sessions` and its
+`work_location` column are kept, unused, and are not a source any more.
 
 Reads always recompute from the evidence, so they are never stale. The stored result is refreshed in the
-same transaction as every write: check-in, check-out, approved correction, upload commit and override. Use
+same transaction as every write: upload commit and override. Use
 `python -m app.cli wfo-refresh --from YYYY-MM-DD --to YYYY-MM-DD` after changing schedules or holidays.
 
 ## Classification (Phase 1)
@@ -36,8 +37,8 @@ Highest priority first:
    WFO, Office, On-site → OFFICE; WFH, Remote → WFH; also leave / holiday / week-off words.
 2. **Badge / swipe / office-access rows** of an upload (`BADGE`) → OFFICE.
 3. **Office Wi-Fi** (`WIFI`) → OFFICE.
-4. **Office / WFH chosen at check-in** (`CHECK_IN`), lower priority than the systems above.
-5. Worked hours with no office signal → **WFH** (`INFERRED`).
+4. (Retired) Office / WFH chosen at check-in (`CHECK_IN`): the value may still appear on old stored days.
+5. Hours in a timesheet row without a work mode → **WFH** (`INFERRED`).
 6. No work: HOLIDAY or WEEKOFF from the calendar (`CALENDAR`), otherwise no mode (absent).
 
 **Conflicts:** an office signal together with a WFH (or leave / holiday / week-off) statement makes the day
@@ -83,7 +84,6 @@ Role scope is enforced in the backend queries. Out-of-scope employees get **403*
 | GET | `/api/org/wfo/export.xlsx?month=&manager_id=&department_id=` | admin | Excel: Summary, Daily, Policy sheets |
 | PUT / DELETE | `/api/admin/attendance/{employee_id}/{date}/work-mode` | admin | Set or remove an override (audited) |
 | GET / PUT | `/api/admin/wfo/policy` | admin | WFO policy (audited) |
-| POST | `/api/attendance/check-in` `{"work_location": "OFFICE" \| "WFH"}` | everyone | Check in with a location (optional) |
 
 The existing `GET /api/attendance/employees/{id}/summary` now also returns a `wfo` block with `wfo_days`,
 `wfh_days`, `wfo_percentage`, `weekly_wfo_breakdown`, `compliance` and `shortfall_days`.
@@ -94,7 +94,15 @@ The existing `GET /api/attendance/employees/{id}/summary` now also returns a `wf
 `presence_mode=OFFICE|WFH`) returns a **preview**; nothing changes yet. Then
 `POST …/{id}/commit {"overwrite_overrides": false}` or `POST …/{id}/discard`.
 
-* CSV (UTF-8; `,` `;` or tab) or Excel `.xlsx`; at most 5 MB and 20,000 rows.
+* CSV / TSV / TXT (UTF-8; `,` `;` tab or `|`), Excel `.xlsx` / `.xls`, or **PDF**; at most 5 MB and 20,000
+  rows. A PDF is read from its text: words are grouped into rows by height and into columns by the header's
+  positions, so a sheet exported or printed to PDF reads like the sheet itself (text outside the header's
+  columns, such as a pivot table, is dropped; a header repeated on later pages is skipped). Scanned PDFs
+  (images) are refused with a message to upload the Excel file. `.ods` must be saved as Excel or CSV.
+* Committing sets the timesheet's **period** (`period_start` / `period_end`, shown after the import): from the
+  1st of the month of its first date to the end of the month of its last date, not beyond the day before the
+  commit. It covers that period for the people listed in it: their scheduled days in the period that are not
+  in any timesheet count as absent; people not in the file are not affected.
 * **Which sheet**: the `sheet` asked for; otherwise the first sheet named like a month ("September 2026",
   "Sep-26", "2026-09") that has an employee and a date column; otherwise the first sheet that has them. The
   preview lists every sheet (usable or not, with row counts) and the page can read another one.
@@ -139,8 +147,9 @@ Sample files: `samples/` (see `samples/README.md`).
   times) counts as a WFO day and as present: the file says the person was in the office, and there is nothing
   to measure. When hours are known, the minimum office hours apply.
 * Employee IDs may contain inner spaces and `.` (`Intern - 10001`, `Guest 2`), as attendance files use them.
-* Check-ins made **without a location** (older data, correction-created sessions) count as worked hours with
-  no office signal (WFH). A correction keeps the location of the session it fixes.
+* Attendance (Present / Absent / WFH / No timesheet, hours, attendance %) is built from the same timesheet
+  days; the rules are in [ATTENDANCE_RULES.md](ATTENDANCE_RULES.md), including which dates a committed
+  timesheet covers.
 * Grouping in the admin view is by **direct** manager, so each person appears once.
 * The 403-not-404 rule applies to the new WFO endpoints only, as the WFO spec asked. Older endpoints keep
   their 404 for out-of-scope ids.

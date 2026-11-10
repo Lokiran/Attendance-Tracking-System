@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { AttendanceUpload, EmployeeWfo, OrgWfo, TeamWfo, WfoDay, WfoRow } from "@/lib/types";
 
-import { current, employeeRoutes } from "./fixtures";
 import { me, mockApi, renderApp } from "./utils";
 
 const policy = { min_days_per_week: 3, min_days_per_month: 12, min_office_minutes: 240 };
@@ -68,24 +67,6 @@ describe("WFO: employee", () => {
     // donut has a table view with the same numbers
     await userEvent.setup().click(screen.getAllByRole("button", { name: /table/i })[0]);
     expect(await screen.findByRole("cell", { name: "4" })).toBeInTheDocument();
-  });
-
-  it("checks in with the chosen work location", async () => {
-    let active = false;
-    const { calls } = mockApi({
-      "/auth/me": me(), ...employeeRoutes(),
-      "/attendance/current": () => current(active),
-      "POST /attendance/check-in": () => { active = true; return { ...current(true).active_session, work_location: "WFH" }; },
-    });
-    renderApp("/");
-    const user = userEvent.setup();
-    const wfh = await screen.findByRole("button", { name: "WFH" });
-    expect(screen.getByRole("button", { name: "Office" })).toHaveAttribute("aria-pressed", "true"); // default
-    await user.click(wfh);
-    expect(wfh).toHaveAttribute("aria-pressed", "true");
-    await user.click(screen.getByRole("button", { name: "Check in" }));
-    await waitFor(() => expect(calls.find((c) => c.path === "/attendance/check-in")?.body).toEqual({ work_location: "WFH" }));
-    expect(localStorage.getItem("ats-work-location")).toBe("WFH");
   });
 });
 

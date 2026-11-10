@@ -75,12 +75,14 @@ class UploadStatus(StrEnum):
 
 
 class DayStatus(StrEnum):
-    PRESENT = "PRESENT"
-    ABSENT = "ABSENT"
+    """Computed for each employee-day from the imported timesheets (never stored)."""
+    PRESENT = "PRESENT"            # in the office
+    WFH = "WFH"                    # worked from home: a working day, not office attendance
+    ABSENT = "ABSENT"              # scheduled, covered by a timesheet, not in it
+    LEAVE = "LEAVE"                # leave, from the timesheet or an Admin override
     HOLIDAY = "HOLIDAY"
     WEEKEND = "WEEKEND"
-    INCOMPLETE = "INCOMPLETE"
-    NOT_YET_CHECKED_IN = "NOT_YET_CHECKED_IN"
+    NO_TIMESHEET = "NO_TIMESHEET"  # scheduled, but no timesheet covers the date yet
     NOT_SCHEDULED = "NOT_SCHEDULED"
 
 

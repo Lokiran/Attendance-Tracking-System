@@ -10,7 +10,7 @@ import openpyxl
 import pytest
 from sqlalchemy import select
 
-from app.models import AttendanceDaily, AttendanceSession, AuditLog, SessionSource, SessionStatus, WorkLocation
+from app.models import AttendanceDaily, AuditLog, DailyStatus, WorkMode
 from app.tests.conftest import login
 
 MONTH = {"month": "2026-03"}
@@ -20,12 +20,13 @@ def ist(d: date, h: int, m: int = 0) -> datetime:
     return datetime(d.year, d.month, d.day, h, m, tzinfo=UTC) - timedelta(hours=5, minutes=30)
 
 
-def worked(db, user, d: date, hours: float = 8.5, location: WorkLocation | None = None):
+def worked(db, user, d: date, hours: float = 8.5, location: WorkMode | None = None):
+    """An imported timesheet day: hours, and the work mode column (None: the file had no mode for it)."""
     start = ist(d, 9, 30)
-    end = start + timedelta(minutes=int(hours * 60))
-    db.add(AttendanceSession(employee_id=user.id, check_in_at=start, check_out_at=end, break_minutes=0,
-                             net_minutes=int(hours * 60), status=SessionStatus.COMPLETED, source=SessionSource.SEED,
-                             work_location=location))
+    db.add(AttendanceDaily(employee_id=user.id, work_date=d, office_minutes=0, wfh_minutes=0, corrected=False,
+                           conflicts=[], status=DailyStatus.ABSENT, upload_work_mode=location,
+                           upload_minutes=int(hours * 60), first_in=start,
+                           last_out=start + timedelta(minutes=int(hours * 60))))
     db.commit()
 
 
@@ -35,16 +36,16 @@ def day(body: dict, d: str) -> dict:
 
 # ------------------------------------------------------------------ classification through the API
 
-def test_me_wfo_classifies_checkins(client, org, db):
-    worked(db, org.rahul, date(2026, 3, 9), location=WorkLocation.OFFICE)
-    worked(db, org.rahul, date(2026, 3, 6), location=WorkLocation.WFH)
-    worked(db, org.rahul, date(2026, 3, 5))  # no location: hours without an office signal
-    worked(db, org.rahul, date(2026, 3, 4), hours=3, location=WorkLocation.OFFICE)  # below the 4 h minimum
+def test_me_wfo_classifies_timesheet_days(client, org, db):
+    worked(db, org.rahul, date(2026, 3, 9), location=WorkMode.OFFICE)
+    worked(db, org.rahul, date(2026, 3, 6), location=WorkMode.WFH)
+    worked(db, org.rahul, date(2026, 3, 5))  # no work mode: hours without an office signal
+    worked(db, org.rahul, date(2026, 3, 4), hours=3, location=WorkMode.OFFICE)  # below the 4 h minimum
     login(client, org.rahul)
     body = client.get("/api/me/wfo", params=MONTH).json()
-    assert (day(body, "2026-03-09")["work_mode"], day(body, "2026-03-09")["wfo_source"]) == ("OFFICE", "CHECK_IN")
+    assert (day(body, "2026-03-09")["work_mode"], day(body, "2026-03-09")["wfo_source"]) == ("OFFICE", "UPLOAD_COLUMN")
     assert day(body, "2026-03-09")["is_wfo_day"] is True
-    assert (day(body, "2026-03-06")["work_mode"], day(body, "2026-03-06")["wfo_source"]) == ("WFH", "CHECK_IN")
+    assert (day(body, "2026-03-06")["work_mode"], day(body, "2026-03-06")["wfo_source"]) == ("WFH", "UPLOAD_COLUMN")
     assert (day(body, "2026-03-05")["work_mode"], day(body, "2026-03-05")["wfo_source"]) == ("WFH", "INFERRED")
     assert day(body, "2026-03-04")["work_mode"] == "OFFICE" and day(body, "2026-03-04")["is_wfo_day"] is False
     assert day(body, "2026-03-07")["work_mode"] == "WEEKOFF"
@@ -56,27 +57,6 @@ def test_me_wfo_classifies_checkins(client, org, db):
     # the week of Sun 1 March is judged on 23 Feb - 1 Mar (no attendance in February): short, like 2-8 March
     assert [w["status"] for w in body["weekly_wfo_breakdown"]][:2] == ["SHORT", "SHORT"]
     assert body["weekly_wfo_breakdown"][0]["week_start"] == "2026-02-23"
-
-
-def test_check_in_with_location_writes_the_attendance_row(client, org, db, frozen):
-    h = login(client, org.rahul)
-    r = client.post("/api/attendance/check-in", headers=h, json={"work_location": "OFFICE"})
-    assert r.status_code == 201 and r.json()["work_location"] == "OFFICE"
-    row = db.scalar(select(AttendanceDaily).where(AttendanceDaily.employee_id == org.rahul.id))
-    assert (row.work_date, row.work_mode, row.wfo_source) == (date(2026, 3, 10), "OFFICE", "CHECK_IN")
-    frozen.advance(hours=5)
-    h = login(client, org.rahul)
-    assert client.post("/api/attendance/check-out", headers=h, json={"break_minutes": 0}).status_code == 200
-    db.expire_all()
-    row = db.scalar(select(AttendanceDaily).where(AttendanceDaily.employee_id == org.rahul.id))
-    assert row.office_minutes == 300 and row.status == "HALF_DAY"
-    assert client.post("/api/attendance/check-in", headers=h, json={"work_location": "MOON"}).status_code == 422
-
-
-def test_check_in_without_a_body_still_works(client, org):
-    h = login(client, org.rahul)
-    r = client.post("/api/attendance/check-in", headers=h)
-    assert r.status_code == 201 and r.json()["work_location"] is None
 
 
 # ------------------------------------------------------------------ role boundaries
@@ -109,7 +89,7 @@ def test_wfo_role_boundaries(client, org):
 
 
 def test_org_wfo_groups_by_direct_manager_and_filters(client, org, db):
-    worked(db, org.rahul, date(2026, 3, 9), location=WorkLocation.OFFICE)
+    worked(db, org.rahul, date(2026, 3, 9), location=WorkMode.OFFICE)
     login(client, org.admin)
     body = client.get("/api/org/wfo", params=MONTH).json()
     groups = {g["manager_name"]: {r["employee"]["full_name"] for r in g["rows"]} for g in body["groups"]}
@@ -137,7 +117,7 @@ def test_admin_override_wins_and_is_audited(client, org, db):
     assert r.status_code == 200 and r.json()["wfo_source"] == "MANUAL_OVERRIDE" and r.json()["overridden"]
     d = day(client.get(f"/api/team/wfo/employees/{org.rahul.id}", params=MONTH).json(), "2026-03-05")
     assert (d["work_mode"], d["wfo_source"], d["overridden"]) == ("OFFICE", "MANUAL_OVERRIDE", True)
-    assert d["override_note"] == "Client visit, badge missing" and d["is_wfo_day"]  # 8.5 h from the check-in
+    assert d["override_note"] == "Client visit, badge missing" and d["is_wfo_day"]  # 8.5 h from the timesheet
     entry = db.scalar(select(AuditLog).where(AuditLog.action == "WORK_MODE_OVERRIDDEN"))
     assert entry.actor_user_id == org.admin.id and entry.entity_id == f"{org.rahul.id}:2026-03-05"
     assert entry.before_values["work_mode"] == "WFH" and entry.after_values["work_mode"] == "OFFICE"
@@ -163,7 +143,7 @@ def test_leave_can_only_come_from_an_override_or_import(client, org, db):
 # ------------------------------------------------------------------ policy, summary, export
 
 def test_policy_changes_what_counts_as_a_wfo_day(client, org, db):
-    worked(db, org.rahul, date(2026, 3, 9), hours=3, location=WorkLocation.OFFICE)
+    worked(db, org.rahul, date(2026, 3, 9), hours=3, location=WorkMode.OFFICE)
     h = login(client, org.priya)
     assert client.get("/api/admin/wfo/policy").status_code == 403
     h = login(client, org.admin)
@@ -176,7 +156,7 @@ def test_policy_changes_what_counts_as_a_wfo_day(client, org, db):
 
 
 def test_existing_summary_includes_wfo(client, org, db):
-    worked(db, org.rahul, date(2026, 3, 9), location=WorkLocation.OFFICE)
+    worked(db, org.rahul, date(2026, 3, 9), location=WorkMode.OFFICE)
     login(client, org.rahul)
     s = client.get(f"/api/attendance/employees/{org.rahul.id}/summary",
                    params={"start": "2026-03-01", "end": "2026-03-10"}).json()
@@ -187,7 +167,7 @@ def test_existing_summary_includes_wfo(client, org, db):
 def test_excel_export(client, org, db):
     org.sneha.full_name = "=HYPERLINK(\"http://evil\")"
     db.commit()
-    worked(db, org.rahul, date(2026, 3, 9), location=WorkLocation.OFFICE)
+    worked(db, org.rahul, date(2026, 3, 9), location=WorkMode.OFFICE)
     login(client, org.admin)
     r = client.get("/api/org/wfo/export.xlsx", params=MONTH)
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/vnd.openxmlformats")

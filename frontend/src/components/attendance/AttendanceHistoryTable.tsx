@@ -10,21 +10,22 @@ import type { DayRecord, DayStatus } from "@/lib/types";
 
 const COLUMNS: Column<DayRecord>[] = [
   { key: "date", header: "Date", cell: (r) => <span className="whitespace-nowrap">{formatDate(r.date, { weekday: "short" })}</span> },
-  { key: "in", header: "First check-in", cell: (r) => <span className="tabular">{formatTime(r.first_check_in)}</span> },
-  { key: "out", header: "Last check-out", cell: (r) => <span className="tabular">{formatTime(r.last_check_out)}</span> },
-  { key: "net", header: "Net hours", align: "right", cell: (r) => formatMinutes(r.net_minutes) },
-  { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} live={r.has_active_session} /> },
+  { key: "in", header: "In", cell: (r) => <span className="tabular">{formatTime(r.first_in)}</span> },
+  { key: "out", header: "Out", cell: (r) => <span className="tabular">{formatTime(r.last_out)}</span> },
+  {
+    key: "net",
+    header: "Office hours",
+    align: "right",
+    cell: (r) => (r.hours_known ? formatMinutes(r.net_minutes) : r.status === "PRESENT" ? <span className="text-xs text-ink-3">Not recorded</span> : "—"),
+  },
+  { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
   {
     key: "notes",
     header: "Exceptions / notes",
     cell: (r) => (
       <div className="space-y-1">
         <ExceptionTags codes={r.exceptions} />
-        {(r.holiday_name || r.session_count > 1) && (
-          <div className="text-[11px] text-ink-3">
-            {[r.holiday_name, r.session_count > 1 && r.session_count + " sessions"].filter(Boolean).join(" · ")}
-          </div>
-        )}
+        {r.holiday_name && <div className="text-[11px] text-ink-3">{r.holiday_name}</div>}
       </div>
     ),
   },

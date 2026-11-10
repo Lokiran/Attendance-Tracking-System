@@ -1,9 +1,10 @@
 # Office Attendance Tracker (ATS)
 
-A full-stack attendance system for **Nexa Technologies** (fictional demo company). Employees
-check in and out, and managers monitor their reporting line. Administrators get
-organisation-wide analytics, management screens and an audit trail. Every number on every
-dashboard is computed by the backend from database records.
+A full-stack attendance system for **Nexa Technologies** (fictional demo company). Attendance comes from
+the **monthly timesheets the HR admin imports** (Excel, CSV or PDF); there is no check-in or check-out in
+the app. Employees see their own attendance, managers monitor their reporting line, and administrators get
+organisation-wide analytics, management screens and an audit trail. Every number on every dashboard is
+computed by the backend from database records.
 
 | | |
 |---|---|
@@ -18,22 +19,30 @@ More detail:
 
 ## Features
 
+* **Timesheet imports** (HR admin)
+  * Upload the month's timesheet as Excel (.xlsx / .xls), CSV / TSV / TXT or a PDF of the sheet; preview,
+    then import. The month's sheet of a workbook is found automatically, swapped dates are corrected, and
+    unknown employee IDs can be added in one step. See [docs/wfo.md](docs/wfo.md#uploads-phase-5).
+  * A committed timesheet covers its months (up to the day before the import) for the people in it: their
+    scheduled days in that period that are not in the file are absent; a month not imported yet shows
+    "No timesheet", not absent. A partial file never marks anyone else absent.
+  * HR can override a single day (Office / WFH / Leave …), audited.
 * **Employee dashboard**
-  * Check-in/check-out using server time, with the elapsed time shown live.
-  * Summary cards: present, absent, shift hours, hours worked, average per day, attendance %.
-  * Monthly calendar with per-day session details.
-  * Charts: daily net hours, 6-month trend, status distribution, actual vs required hours.
-  * Filterable, paginated history.
-  * Correction requests with status tracking, plus holidays. There is no leave: attendance is office
-    presence, measured against the shift's hours.
+  * Greeting, shift, and how far the imported timesheets reach.
+  * Summary cards: present, absent, WFH days, office hours (when the timesheet has hours), average per
+    day, attendance %. Days listed without hours count as present with hours "not recorded".
+  * Monthly calendar with each day's timesheet entry.
+  * Charts: daily office hours, 6-month trend, status distribution, actual vs required hours.
+  * Filterable, paginated history. Attendance is office presence; WFH days are working days but not
+    office attendance; leave only comes from timesheets or HR overrides (no leave requests).
 * **Manager dashboard** (whole reporting subtree)
   * Today's snapshot cards: categories are mutually exclusive and clickable as filters.
   * Daily stacked attendance and weekly/monthly trends.
   * Employee-wise hours and attendance comparisons.
   * Team table with search, status filter, sorting and pagination.
-  * Exceptions list including missing check-outs.
+  * Exceptions list: absences, late arrivals and short hours (the last two need times or hours in the timesheet).
   * Drill-down to any employee and day.
-  * Approvals and CSV exports.
+  * CSV exports.
 * **Admin**
   * Organisation overview with department, manager, distribution and office-hours comparisons.
   * Searchable, expandable hierarchy (organisation → department → manager → employee),
@@ -201,9 +210,9 @@ powershell -ExecutionPolicy Bypass -File scripts\test-postgres.ps1 -DatabaseUrl 
 
 ## Demo users
 
-`python -m app.cli seed` creates the users below. It also creates 75 days of attendance (including
-multi-session days, missing check-outs, overnight shifts, holidays and absences) plus
-pending, approved and rejected corrections. All dates are relative to the current day.
+`python -m app.cli seed` creates the users below. It also imports one demo timesheet per month for the last
+~75 days (office days, WFH, leave, absences, in / out times, a night shift) through the real upload pipeline,
+so the uploads appear under *Import timesheets*. All dates are relative to the current day.
 
 | Name | Role | Email | Reports to |
 |---|---|---|---|
@@ -226,7 +235,7 @@ Passwords:
   the selected env file (`backend\.env`, or `backend\.env.sqlite` with the SQLite profile).
 * Nothing is hard-coded, and the seed refuses to run without them or in production.
 * The seed is idempotent. Re-running never duplicates people or attendance.
-* `python -m app.cli seed --reset-demo` regenerates demo attendance relative to today.
+* `python -m app.cli seed --reset-demo` removes the demo timesheets and imports them again relative to today.
 * `--reset-passwords` re-applies the passwords from `.env`.
 
 **Production / real deployments**: don't seed. Create the first administrator interactively;
@@ -241,12 +250,12 @@ python -m app.cli create-admin --email admin@yourcompany.com --name "Jane Doe" -
 Every employee-day gets a work mode: Office, WFH, Leave, Holiday or Weekly off. Monthly WFO days, WFO %,
 weekly progress ("2 of 3 days") and policy compliance are computed from those days.
 
-* **Signals**, highest priority first: an Admin override; the work-mode column of an imported file; badge /
-  swipe rows; office Wi-Fi; Office / WFH chosen at check-in. Worked hours with no office signal count as WFH.
-* **Pages:** *Office days* (everyone), *Team office days* (managers), *Org office days* and *Import attendance*
+* **Signals**, highest priority first: an Admin override; the work-mode column of an imported timesheet; badge /
+  swipe rows; office Wi-Fi. A timesheet with only ID and date is a presence list: every listed day is Office.
+* **Pages:** *Office days* (everyone), *Team office days* (managers), *Org office days* and *Import timesheets*
   (admin, with Excel export and day overrides).
-* **Imports:** CSV or Excel with a preview first; examples are in `samples/`. Accepted header names and values
-  are in `backend/config/wfo_mapping.json`.
+* **Imports:** Excel, CSV or PDF with a preview first; examples are in `samples/`. Accepted header names and
+  values are in `backend/config/wfo_mapping.json`.
 * **Policy:** 3 office days a week, 12 a month, at least 4 h in the office for a day to count (editable).
 
 Rules, API, upload format and assumptions: [docs/wfo.md](docs/wfo.md). After changing schedules or
@@ -335,8 +344,8 @@ The backend suite has two explicitly separated groups:
 The PostgreSQL integration tests cover:
 * Alembic upgrade, downgrade and re-upgrade, including `btree_gist`, the exclusion constraint, the partial unique index and `timestamptz` columns.
 * Overlap, unique and check constraint SQLSTATEs.
-* Row-lock waits, parallel check-ins and check-outs, and the unique index acting as the last line of defence.
-* Transaction rollback, timezone-independent timestamps, the recursive-CTE reporting scope, and API scope checks.
+* Transaction rollback of a timesheet commit, timezone-independent timestamps, the recursive-CTE reporting scope,
+  and API scope checks.
 
 ```powershell
 # Backend, SQLite (PostgreSQL integration tests are skipped and listed with -rs)
@@ -381,16 +390,18 @@ backend\.venv\Scripts\python.exe scripts\smoke_test.py
 | Docker Desktop fails to start | Docker Desktop needs WSL 2 (`wsl --install`) or Hyper-V. Otherwise install PostgreSQL natively (Option B). |
 | Signed out unexpectedly | Sessions expire after 2 h idle or 12 h total. In development without `SECRET_KEY`, every backend restart also signs everyone out. |
 | HTTP 429 on login | Too many failed attempts; wait 15 minutes (`LOGIN_WINDOW_MINUTES`). |
-| Dashboards empty | No data in the period, or no schedule covers those days. Seed demo data, or add an organisation default schedule under Admin → Schedules. |
+| Dashboards empty / "No timesheet" | No timesheet covers the period yet (import it under Admin → Import timesheets), or no schedule covers those days (Admin → Schedules). |
 
 ## Known limitations
 
-* Manual check-in records events submitted from the browser; it doesn't prove physical
-  presence (no badge, geofence or network checks).
-* Sessions that start after midnight count toward the new day, even when they continue a night
-  shift after a break (see the attendance rules doc).
-* Breaks are recorded per session (entered at check-out or via correction). There is no
-  automatic break deduction policy.
+* Attendance is only as accurate as the imported timesheets; the app does not record or verify presence.
+* A timesheet's period is inferred (whole months up to the day before the import). For the people in a
+  partial file of a past month, the days not in it count as absent; import the complete month.
+* Hours come from the timesheet (an hours column or in / out times); a presence list without them gives
+  "not recorded" hours. There is no break deduction.
+* A PDF must contain text (exported or printed from Excel); scanned images are refused. `.ods` files must be
+  saved as Excel or CSV first.
+* The check-in, session and correction tables from earlier versions are kept, unused.
 * Login throttling is per email/IP in the database. There is no CAPTCHA or account-lockout
   notification.
 * Dashboards compute statistics in the API process. That is fine for hundreds of employees;

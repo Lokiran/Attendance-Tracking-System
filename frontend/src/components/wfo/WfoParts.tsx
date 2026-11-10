@@ -21,15 +21,15 @@ import type { Compliance, EmployeeWfo, WfoDay, WfoPolicy, WfoSummary, WfoWeek, W
  */
 export const MODE_META: Record<WorkMode, { label: string; short: string; color: string }> = {
   OFFICE: { label: "Work from office", short: "WFO", color: "var(--series-1)" },
-  WFH: { label: "Work from home", short: "WFH", color: "var(--series-3)" },
-  LEAVE: { label: "Leave", short: "Leave", color: "var(--series-2)" },
+  WFH: { label: "Work from home", short: "WFH", color: "var(--st-wfh)" },
+  LEAVE: { label: "Leave", short: "Leave", color: "var(--st-leave)" },
   HOLIDAY: { label: "Holiday", short: "Holiday", color: "var(--st-holiday)" },
   WEEKOFF: { label: "Weekly off", short: "Off", color: "var(--st-off)" },
 };
 
 export const SOURCE_LABEL: Record<string, string> = {
   MANUAL_OVERRIDE: "Admin override", UPLOAD_COLUMN: "Imported file", BADGE: "Badge / swipe", WIFI: "Office Wi-Fi",
-  CHECK_IN: "Check-in choice", INFERRED: "Hours with no office signal", CALENDAR: "Calendar",
+  CHECK_IN: "Check-in (retired)", INFERRED: "Hours with no office signal", CALENDAR: "Calendar",
 };
 
 const hours = (m: number) => `${(m / 60).toFixed(m % 60 ? 1 : 0)} h`;

@@ -67,20 +67,20 @@ export function formatPercent(p: number | null | undefined): string {
 
 export const STATUS_LABEL: Record<DayStatus, string> = {
   PRESENT: "Present",
+  WFH: "WFH",
   ABSENT: "Absent",
+  LEAVE: "Leave",
   HOLIDAY: "Holiday",
   WEEKEND: "Weekend",
-  INCOMPLETE: "Incomplete",
-  NOT_YET_CHECKED_IN: "Not checked in",
+  NO_TIMESHEET: "No timesheet",
   NOT_SCHEDULED: "Not scheduled",
 };
 
 export const EXCEPTION_LABEL: Record<string, string> = {
-  MISSING_CHECKOUT: "Missing check-out",
   LATE_ARRIVAL: "Late arrival",
   SHORT_HOURS: "Short hours",
   BELOW_MINIMUM: "Below minimum",
-  ABSENT: "Unexplained absence",
+  ABSENT: "Not in the timesheet",
 };
 
 export function exceptionLabel(code: string): string {

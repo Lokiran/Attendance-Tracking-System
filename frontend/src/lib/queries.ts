@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError, type Params } from "./api";
 import { DASHBOARD_REFRESH_MS } from "./config";
@@ -14,11 +14,9 @@ import type {
   OrgWfo,
   Overview,
   Page,
-  Session,
   Summary,
   TeamWfo,
   Trends,
-  WorkLocation,
 } from "./types";
 
 /** Query-key roots; invalidating a root refreshes every query beneath it. */
@@ -27,7 +25,6 @@ export const qk = {
   current: ["attendance", "current"] as const,
   attendance: ["attendance"] as const,
   dashboard: ["dashboard"] as const,
-  corrections: ["corrections"] as const,
   admin: ["admin"] as const,
   wfo: ["wfo"] as const,
 };
@@ -140,26 +137,9 @@ export function useInvalidateAttendance() {
     Promise.all([
       qc.invalidateQueries({ queryKey: qk.attendance }),
       qc.invalidateQueries({ queryKey: qk.dashboard }),
-      qc.invalidateQueries({ queryKey: qk.corrections }),
+      qc.invalidateQueries({ queryKey: qk.current }),
       qc.invalidateQueries({ queryKey: qk.wfo }),
     ]);
-}
-
-export function useCheckIn() {
-  const invalidate = useInvalidateAttendance();
-  return useMutation({
-    mutationFn: (workLocation?: WorkLocation | null) =>
-      api.post<Session>("/attendance/check-in", workLocation ? { work_location: workLocation } : {}),
-    onSettled: invalidate,
-  });
-}
-
-export function useCheckOut() {
-  const invalidate = useInvalidateAttendance();
-  return useMutation({
-    mutationFn: (breakMinutes: number) => api.post<Session>("/attendance/check-out", { break_minutes: breakMinutes }),
-    onSettled: invalidate,
-  });
 }
 
 // ------------------------------------------------------------------ WFO

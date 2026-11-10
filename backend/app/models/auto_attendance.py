@@ -51,6 +51,11 @@ class AttendanceUpload(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: clock.utcnow(), nullable=False)
     committed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     committed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # Dates this timesheet covers once committed: a scheduled day in the period that is not in the file is
+    # absent. From the 1st of the month of its first date to the end of the month of its last date, but
+    # not beyond the day before it was committed.
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
 
 
 class AttendanceUploadRow(Base):
@@ -59,6 +64,7 @@ class AttendanceUploadRow(Base):
     __tablename__ = "attendance_upload_rows"
     __table_args__ = (
         Index("ix_attendance_upload_rows_upload", "upload_id", "row_number"),
+        Index("ix_attendance_upload_rows_employee", "employee_id", "upload_id"),  # timesheet coverage per person
         CheckConstraint("minutes IS NULL OR minutes >= 0", name="minutes_non_negative"),
     )
 

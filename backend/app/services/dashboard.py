@@ -5,17 +5,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import clock
 from app.core.timeutil import local_date, office_tz
-from app.models import AttendanceCorrection, DayStatus, Department, RequestStatus, Role, User
+from app.models import DayStatus, Department, Role, User
 from app.services import record_cache
-from app.services.attendance_data import compute_records
+from app.services.attendance_data import compute_records, latest_import_through
 from app.services.attendance_rules import (
     EXC_LATE_ARRIVAL,
-    EXC_MISSING_CHECKOUT,
     EXC_SHORT_HOURS,
     DayRecord,
     Summary,
@@ -23,11 +22,11 @@ from app.services.attendance_rules import (
 )
 from app.services.scope import resolve_scope
 
-SNAPSHOT_KEYS = ("present", "absent", "not_checked_in", "incomplete", "off")
+SNAPSHOT_KEYS = ("present", "wfh", "absent", "leave", "no_timesheet", "off")
 _SNAPSHOT_OF = {
-    DayStatus.PRESENT: "present", DayStatus.ABSENT: "absent", DayStatus.NOT_YET_CHECKED_IN: "not_checked_in",
-    DayStatus.INCOMPLETE: "incomplete", DayStatus.HOLIDAY: "off",
-    DayStatus.WEEKEND: "off", DayStatus.NOT_SCHEDULED: "off",
+    DayStatus.PRESENT: "present", DayStatus.WFH: "wfh", DayStatus.ABSENT: "absent", DayStatus.LEAVE: "leave",
+    DayStatus.NO_TIMESHEET: "no_timesheet", DayStatus.HOLIDAY: "off", DayStatus.WEEKEND: "off",
+    DayStatus.NOT_SCHEDULED: "off",
 }
 
 
@@ -40,35 +39,33 @@ class ScopeArgs:
 def aggregate(summaries: list[Summary]) -> dict:
     expected = sum(s.expected_days for s in summaries)
     present_expected = sum(s.present_expected_days for s in summaries)
-    attended = sum(s.attended_days_for_average for s in summaries)
+    hours_days = sum(s.hours_days for s in summaries)
     net = sum(s.net_minutes for s in summaries)
-    required = sum(s.required_minutes for s in summaries)
+    hours_required = sum(s.hours_required_minutes for s in summaries)
     return {
         "expected_days": expected,
         "present_expected_days": present_expected,
         "present_days": sum(s.present_days for s in summaries),
         "absent_days": sum(s.absent_days for s in summaries),
-        "incomplete_days": sum(s.incomplete_days for s in summaries),
+        "wfh_days": sum(s.wfh_days for s in summaries),
+        "leave_days": sum(s.leave_days for s in summaries),
+        "no_timesheet_days": sum(s.no_timesheet_days for s in summaries),
         "late_days": sum(s.late_days for s in summaries),
-        "unresolved_sessions": sum(s.unresolved_sessions for s in summaries),
         "net_minutes": net,
-        "required_minutes": required,
-        "variance_minutes": net - required,
-        "attended_days_for_average": attended,
-        "average_net_minutes": round(net / attended) if attended else None,
+        "required_minutes": sum(s.required_minutes for s in summaries),
+        "hours_days": hours_days,
+        "hours_required_minutes": hours_required,
+        "variance_minutes": net - hours_required,
+        "average_net_minutes": round(net / hours_days) if hours_days else None,
         "attendance_percentage": round(present_expected * 100 / expected, 1) if expected else None,
     }
 
 
 def _snapshot(records_on_date: list[DayRecord | None]) -> dict:
     counts = dict.fromkeys(SNAPSHOT_KEYS, 0)
-    active = 0
     for r in records_on_date:
-        if r is None:
-            continue
-        counts[_SNAPSHOT_OF[r.status]] += 1
-        active += int(r.has_active_session)
-    counts["checked_in_now"] = active
+        if r is not None:
+            counts[_SNAPSHOT_OF[r.status]] += 1
     return counts
 
 
@@ -104,14 +101,6 @@ def _compute(db: Session, employees: list[User], start: date, end: date, on_date
     return result if held is all_records else _derive(all_records, start, end, on_date)
 
 
-def _pending_counts(db: Session, employee_ids: list[int]) -> dict:
-    if not employee_ids:
-        return {"pending_corrections": 0}
-    pc = db.scalar(select(func.count()).select_from(AttendanceCorrection).where(
-        AttendanceCorrection.employee_id.in_(employee_ids), AttendanceCorrection.status == RequestStatus.PENDING))
-    return {"pending_corrections": pc}
-
-
 def overview(db: Session, viewer: User, scope: ScopeArgs, start: date, end: date, on_date: date) -> dict:
     employees = resolve_scope(db, viewer, manager_id=scope.manager_id, department_id=scope.department_id)
     c = _compute(db, employees, start, end, on_date)
@@ -125,7 +114,7 @@ def overview(db: Session, viewer: User, scope: ScopeArgs, start: date, end: date
         "snapshot": _snapshot([c.on.get(e.id) for e in employees]),
         "period": aggregate(summaries),
         "attendance_bands": attendance_bands(summaries),
-        **_pending_counts(db, [e.id for e in employees]),
+        "timesheet_through": latest_import_through(db),
     }
 
 
@@ -152,7 +141,7 @@ SORT_KEYS = {
     "name": lambda r: r["full_name"].lower(),
     "code": lambda r: r["employee_code"],
     "department": lambda r: (r["department_name"] or "").lower(),
-    "check_in": lambda r: (r["day"]["first_check_in"] is None, r["day"]["first_check_in"] or 0),
+    "first_in": lambda r: (r["day"]["first_in"] is None, r["day"]["first_in"] or 0),
     "net_minutes": lambda r: r["period"]["net_minutes"],
     "average_net_minutes": lambda r: (r["period"]["average_net_minutes"] is None,
                                       r["period"]["average_net_minutes"] or 0),
@@ -190,10 +179,11 @@ def employee_rows(
             "manager_id": e.manager_id, "manager_name": e.manager.full_name if e.manager else None,
             "day": {
                 "status": day.status if day else None,
-                "first_check_in": day.first_check_in if day else None,
-                "last_check_out": day.last_check_out if day else None,
+                "first_in": day.first_in if day else None,
+                "last_out": day.last_out if day else None,
                 "net_minutes": day.net_minutes if day else 0,
-                "has_active_session": day.has_active_session if day else False,
+                "hours_known": day.hours_known if day else False,
+                "work_mode": day.work_mode if day else None,
                 "exceptions": day.exceptions if day else [],
             },
             "period": aggregate([summary]),
@@ -221,7 +211,7 @@ def bucketize(records: Iterable[DayRecord], end: date, granularity: str) -> list
     """Aggregate day records into day/week/month buckets (shared by team and employee trends)."""
     buckets: dict[date, dict] = {}
     bucket_of: dict[date, dict] = {}  # date -> its bucket, so labels are built once per date, not per record
-    present_s, absent_s, incomplete_s = DayStatus.PRESENT, DayStatus.ABSENT, DayStatus.INCOMPLETE
+    present_s, absent_s, wfh_s = DayStatus.PRESENT, DayStatus.ABSENT, DayStatus.WFH
     for r in records:
         b = bucket_of.get(r.date)
         if b is None:
@@ -230,8 +220,8 @@ def bucketize(records: Iterable[DayRecord], end: date, granularity: str) -> list
             if b is None:
                 b = buckets[b_start] = {
                     "start": b_start, "end": min(b_end, end), "label": label, "expected": 0, "present_expected": 0,
-                    "present": 0, "absent": 0, "incomplete": 0, "net_minutes": 0, "attended": 0,
-                    "required_minutes": 0, "late": 0, "missing_checkout": 0, "short_hours": 0,
+                    "present": 0, "absent": 0, "wfh": 0, "net_minutes": 0, "attended": 0,
+                    "required_minutes": 0, "hours_required_minutes": 0, "late": 0, "short_hours": 0,
                 }
             bucket_of[r.date] = b
         status = r.status
@@ -241,18 +231,18 @@ def bucketize(records: Iterable[DayRecord], end: date, granularity: str) -> list
                 b["present_expected"] += 1
         if status == present_s:
             b["present"] += 1
-            if r.net_minutes > 0:
-                b["attended"] += 1
+            if r.hours_known:
+                b["attended"] += 1  # days with recorded hours (the average's denominator)
+                b["hours_required_minutes"] += r.required_minutes
         elif status == absent_s:
             b["absent"] += 1
-        elif status == incomplete_s:
-            b["incomplete"] += 1
+        elif status == wfh_s:
+            b["wfh"] += 1
         b["net_minutes"] += r.net_minutes
         b["required_minutes"] += r.required_minutes
         exc = r.exceptions
         if exc:
             b["late"] += EXC_LATE_ARRIVAL in exc
-            b["missing_checkout"] += EXC_MISSING_CHECKOUT in exc
             b["short_hours"] += EXC_SHORT_HOURS in exc
     items = []
     for b in sorted(buckets.values(), key=lambda x: x["start"]):
@@ -293,8 +283,8 @@ def exceptions(db: Session, viewer: User, scope: ScopeArgs, start: date, end: da
         rows.append({
             "employee_id": e.id, "employee_code": e.employee_code, "full_name": e.full_name,
             "department_name": e.department.name if e.department else None, "date": r.date,
-            "status": r.status, "exceptions": r.exceptions, "first_check_in": r.first_check_in,
-            "last_check_out": r.last_check_out, "net_minutes": r.net_minutes,
+            "status": r.status, "exceptions": r.exceptions, "first_in": r.first_in,
+            "last_out": r.last_out, "net_minutes": r.net_minutes, "hours_known": r.hours_known,
             "required_minutes": r.required_minutes,
         })
     return {"counts": dict(counts), "items": rows, "total": len(matches), "page": page, "page_size": page_size}

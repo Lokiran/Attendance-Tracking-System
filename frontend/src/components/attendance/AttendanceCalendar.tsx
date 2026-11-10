@@ -11,7 +11,7 @@ import { useEmployeeDays } from "@/lib/queries";
 import type { DayRecord, DayStatus } from "@/lib/types";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const LEGEND: DayStatus[] = ["PRESENT", "ABSENT", "HOLIDAY", "INCOMPLETE", "WEEKEND"];
+const LEGEND: DayStatus[] = ["PRESENT", "WFH", "ABSENT", "LEAVE", "HOLIDAY", "NO_TIMESHEET"];
 
 export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectDay }: {
   employeeId: number;
@@ -35,7 +35,7 @@ export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectD
     <Card>
       <CardHeader
         title="Attendance calendar"
-        subtitle="Select a day to see its sessions"
+        subtitle="From the imported timesheets · select a day for details"
         actions={
           <div className="flex items-center gap-1">
             <button className="rounded-md p-1.5 text-ink-2 hover:bg-surface-2" onClick={() => onMonthChange(addMonths(first, -1))} aria-label="Previous month">
@@ -71,7 +71,7 @@ export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectD
               const meta = rec ? STATUS_META[rec.status] : null;
               const Icon = meta?.icon;
               const isFuture = d > today;
-              const label = formatDate(d) + (rec ? ": " + STATUS_LABEL[rec.status] + (rec.net_minutes ? ", " + formatMinutes(rec.net_minutes) : "") : isFuture ? ": upcoming" : "");
+              const label = formatDate(d) + (rec ? ": " + STATUS_LABEL[rec.status] + (rec.hours_known ? ", " + formatMinutes(rec.net_minutes) : "") : isFuture ? ": upcoming" : "");
               return (
                 <button
                   key={d}
@@ -94,7 +94,7 @@ export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectD
                       <span className="flex w-full items-center gap-1">
                         {Icon && <Icon className="size-3.5 shrink-0" style={{ color: meta!.color }} aria-hidden />}
                         <span className="tabular hidden truncate text-[10px] text-ink-2 md:inline">
-                          {rec.net_minutes ? formatMinutes(rec.net_minutes) : STATUS_LABEL[rec.status]}
+                          {rec.hours_known ? formatMinutes(rec.net_minutes) : STATUS_LABEL[rec.status]}
                         </span>
                       </span>
                     )

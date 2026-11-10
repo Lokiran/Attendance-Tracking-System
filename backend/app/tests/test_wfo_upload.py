@@ -65,8 +65,8 @@ def test_value_parsers():
 
 def test_csv_delimiters_and_file_checks():
     assert read_table("a.csv", "Employee;Date\nEMP001;2026-10-05\n".encode())[1] == ["EMP001", "2026-10-05"]
-    with pytest.raises(ValidationFailed, match=".csv or .xlsx"):
-        read_table("a.pdf", b"x")
+    with pytest.raises(ValidationFailed, match="Excel .* or PDF"):
+        read_table("a.docx", b"x")
     with pytest.raises(ValidationFailed, match="empty"):
         read_table("a.csv", b"")
     with pytest.raises(ValidationFailed, match="larger"):

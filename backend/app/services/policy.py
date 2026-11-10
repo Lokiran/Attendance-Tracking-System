@@ -14,9 +14,4 @@ def get_policy(db: Session) -> AttendancePolicy:
 
 
 def policy_data(policy: AttendancePolicy) -> PolicyData:
-    return PolicyData(
-        min_present_minutes=policy.min_present_minutes,
-        count_incomplete_as_present=policy.count_incomplete_as_present,
-        max_session_minutes=policy.max_session_minutes,
-        late_grace_minutes=policy.late_grace_minutes,
-    )
+    return PolicyData(min_present_minutes=policy.min_present_minutes, late_grace_minutes=policy.late_grace_minutes)

@@ -4,106 +4,75 @@ All figures on every dashboard, table and CSV export come from one implementatio
 `backend/app/services/attendance_rules.py` (pure functions, unit-tested in
 `backend/app/tests/test_attendance_rules.py`). Nothing is computed in the browser.
 
-## Time and workdays
+Attendance comes from the **timesheets the HR admin imports** (Excel, CSV or PDF; see
+[wfo.md](wfo.md#uploads-phase-5) for reading files). There is no check-in, check-out or correction request
+in the app. The tables of those retired features are kept in the database, unused.
 
-* Timestamps are stored in UTC (`timestamptz`) and shown in the office timezone
-  (`OFFICE_TIMEZONE`, default `Asia/Kolkata`).
-* Check-in and check-out times are taken from the **server clock**. Browser-supplied times are
-  never used for check-in/out.
-* A session belongs to the office-local **date of its check-in**. An overnight session
-  (e.g. 21:00 → 06:00) counts fully toward the day it started.
-* Day boundaries are local midnights computed with `zoneinfo`, so DST transitions and month
-  ends are handled correctly (no UTC off-by-one).
+## Timesheet days
 
-## Sessions
+* Each committed upload writes what it says about an employee-day into `attendance_daily` (work mode,
+  hours, in / out times, badge rows). An Admin override of a single day is stored there too.
+* The work mode of a day is decided with the WFO priority rules (`wfo_rules.classify_day`): override >
+  the timesheet's work-mode column > badge rows > office Wi-Fi; hours without a work mode count as WFH.
+  A file with only an employee and a date column is a presence list: every listed day is OFFICE.
+* Office hours of a day: the timesheet's hours column, or the span of its in / out times (an out time
+  earlier than the in time means the next day). A day listed without either has **no recorded hours**.
+* Timestamps are stored in UTC (`timestamptz`) and shown in the office timezone (`OFFICE_TIMEZONE`, default
+  `Asia/Kolkata`).
 
-| Status | Meaning | Counts toward hours? |
-|---|---|---|
-| `OPEN` | Checked in, not yet out. *Active* while younger than `max_session_minutes`. | No (until checked out) |
-| `COMPLETED` | Checked out; `net_minutes` is final | **Yes** |
-| `MISSING_CHECKOUT` | Never checked out (or exceeded max length) | No — *unresolved* |
-| `VOIDED` | Superseded by an approved correction; kept for history | No |
+## Coverage
 
-* `net_minutes = floor(minutes between check-in and check-out) − break_minutes`. The duration
-  must be positive and the break can't exceed it. All arithmetic is in integer minutes.
-* Only one `OPEN` session per employee (partial unique index + row lock). Sessions can't
-  overlap: an `OPEN` session occupies `[check-in, ∞)` until it is checked out, so corrections
-  can't be placed inside a running session. Check-out re-checks for overlap. On PostgreSQL the
-  exclusion constraint `ex_attendance_no_overlap` is the final guard, and any violation is
-  reported as HTTP 409 with the whole transaction rolled back.
-* If someone forgets to check out, the next check-in marks the old session `MISSING_CHECKOUT`.
-  The original row is preserved, and the employee can request a correction.
-* A check-out attempted after `max_session_minutes` (default 16 h) is refused, and the session
-  is flagged `MISSING_CHECKOUT`.
+A committed timesheet **covers** the 1st of the month of its first date up to the end of the month of its
+last date, but not beyond the day before it was committed (`attendance_uploads.period_start / period_end`),
+**for the people listed in it** (its valid rows). A September sheet imported in November covers all of
+September; a November sheet imported on the 10th covers 1–9 November. A person's coverage is the union of
+the timesheets that list them, so a partial file (one team, a one-person fix) never makes anyone else
+absent, and a person missing from every sheet of a month shows "No timesheet" for that month.
 
 ## Schedules
 
 Resolution for a given day: **employee schedule > department schedule > organisation default**.
 Within a tier, the assignment effective on that date wins. Schedules define start/end time
-(end < start means an overnight shift), required net minutes, and ISO working days
-(1 = Mon … 7 = Sun). Days before an employee's joining date are `NOT_SCHEDULED`.
+(end < start means an overnight shift), required minutes, and ISO working days
+(1 = Mon … 7 = Sun). Days before an employee's joining date are `NOT_SCHEDULED`, even with data.
 
 ## Day status (single source of truth)
 
-Evaluated for each date up to today (future dates are never evaluated), first match wins:
+| Timesheet says | Status | Expected (in the denominator) |
+|---|---|---|
+| OFFICE | `PRESENT` (or `ABSENT` with `BELOW_MINIMUM` when recorded hours are under the policy minimum) | if a scheduled, non-holiday day |
+| WFH | `WFH`: a working day, but not office attendance | if a scheduled, non-holiday day |
+| LEAVE | `LEAVE` | no |
+| HOLIDAY / WEEKOFF | `HOLIDAY` / `WEEKEND` | no |
+| nothing, scheduled non-holiday day, covered for this person, before today | `ABSENT` (exception `ABSENT`) | yes |
+| nothing, scheduled non-holiday day, not covered for this person (or today) | `NO_TIMESHEET` | no |
+| nothing, holiday / weekly off | `HOLIDAY` / `WEEKEND` | no |
 
-1. Before the joining date → `NOT_SCHEDULED`
-2. **Present**: a completed session (for past days with net ≥ `min_present_minutes`), or an
-   active session → `PRESENT`. If `count_incomplete_as_present` is on, a day with only
-   unresolved sessions also counts.
-3. Unresolved session(s) and not present → `INCOMPLETE`
-4. Scheduled working day, not a holiday:
-   today → `NOT_YET_CHECKED_IN`; past → `ABSENT`
-5. Holiday on a working day → `HOLIDAY`
-6. Non-working day of the schedule → `WEEKEND`; no schedule → `NOT_SCHEDULED`
+Future dates are never evaluated. Working on an off day or a holiday is an extra `PRESENT` day outside
+the denominator.
 
-There is no leave. Attendance is office presence only: a scheduled working day without a
-check-in is absent, and worked hours are measured against the shift's required hours.
+## Metrics
 
-## Expected days and metrics
-
-A day is **expected** when it is a scheduled working day (of the person's shift) and not a holiday.
-
-Today is expected only once the person is present. `NOT_YET_CHECKED_IN` is never a penalty.
-
-| Metric | Definition |
-|---|---|
-| Days present | Days with status `PRESENT` (includes extra days worked on weekends/holidays, reported separately as *extra days*) |
-| Days absent | Days with status `ABSENT` |
-| Net office hours | Sum of `net_minutes` of `COMPLETED` sessions in the period |
-| Average per attended day | Net minutes ÷ number of `PRESENT` days with net minutes > 0 |
-| Attendance % | Present expected days ÷ expected days × 100, shown as "—" when there are no expected days (never divides by zero) |
-| Required (shift) hours | Sum of the shift's required minutes over expected days |
-| Variance | Net minutes − required minutes (presence time, not "productive" time) |
-
-Exceptions flagged per day: `MISSING_CHECKOUT`, `LATE_ARRIVAL` (first check-in later than
-schedule start + `late_grace_minutes`), `SHORT_HOURS` (finished present day below required),
-`ABSENT`, and `BELOW_MINIMUM`.
+* **Attendance %** = present expected days / expected days (office attendance; WFH days lower it).
+  No expected days → no percentage (never a division by zero).
+* **Shift hours** (`required_minutes`) = the shift's required minutes summed over expected days.
+* **Office hours** (`net_minutes`) are summed only from days whose hours the timesheet recorded
+  (`hours_days`). They are compared with the shift minutes of the **same** days
+  (`hours_required_minutes`, `variance_minutes`), and the average is per such day. A presence list without
+  hours therefore shows hours as "not recorded", never as hours short.
+* Exceptions: `ABSENT`; `LATE_ARRIVAL` when the in time is later than shift start + grace;
+  `SHORT_HOURS` when a past present day has recorded hours under the shift's required minutes;
+  `BELOW_MINIMUM` (see above).
 
 ## Team snapshots
 
-Manager and admin "today" cards put each person in **exactly one** category from their day
-status: present / absent / not checked in / incomplete / off. The categories
-always add up to the headcount. Accounts with `attendance_tracked = false` (e.g. the system
-administrator) are excluded from statistics.
+For one date, every person in scope falls in exactly one of: present, WFH, absent, leave, no timesheet,
+off (holiday / weekend / not scheduled). The counts always add up to the headcount.
 
-## Corrections
+## Policy settings that apply
 
-Employees can't edit sessions. They submit a request to fix an existing session (including a
-missing check-out) or to add a missing one. Requests are allowed within the policy's correction
-window; they can't be for future times, can't overlap other sessions, and allow only one
-pending request per session. When a reviewer approves one, inside a single transaction:
+* `min_present_minutes`: recorded office minutes below this make an office day absent (0: off).
+* `late_grace_minutes`: minutes after shift start before an in time counts as late.
 
-1. the original session becomes `VOIDED` with a reason (never deleted),
-2. a new `COMPLETED` session with source `CORRECTION` is created, and
-3. the reviewer, time, comment and before/after values are written to the audit log.
-
-Reviewers are admins, or managers whose subtree includes the employee (when the
-`manager_can_approve` policy is on). Nobody can review their own request.
-
-## Known rule limitation
-
-A session that **starts** after midnight belongs to the new day. This applies even when it
-continues an overnight shift after a break, such as 21:00–01:00 and then 01:30–06:00. Most
-night-shift workers check in once per shift, so this rarely matters. A future rule could
-attach such continuations to the shift's start day.
+The settings for check-in sessions and corrections (maximum session length, correction window, counting
+missing check-outs) are kept in the database but no longer used.

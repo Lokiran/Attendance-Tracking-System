@@ -6,7 +6,7 @@
   ``MAX_DAY_RECORDS``, and entries expire after ``TTL_SECONDS``.
 * Never stale: callers build the key from everything the result depends on (see
   ``attendance_data.compute_records``). ``write_version()`` additionally changes on every commit that
-  touches attendance sessions in this process, which covers writes that keep the same timestamp.
+  touches timesheet days or uploads in this process, which covers writes that keep the same timestamp.
 
 Cached values are shared between requests and must be treated as read-only.
 """
@@ -102,10 +102,11 @@ def get_or_compute(key: Hashable, size: int, compute: Callable[[], Any]) -> Any:
 _TOUCHED = "ats_attendance_touched"
 
 
-def _is_tracked(obj: object) -> bool:
-    from app.models import AttendanceSession  # local import: models import nothing from services
+_TRACKED = ("AttendanceDaily", "AttendanceUpload")  # timesheet days and the periods uploads cover
 
-    return isinstance(obj, AttendanceSession)
+
+def _is_tracked(obj: object) -> bool:
+    return type(obj).__name__ in _TRACKED
 
 
 @event.listens_for(Session, "after_flush")
@@ -117,7 +118,7 @@ def _after_flush(session: Session, _flush_context: UOWTransaction) -> None:
 @event.listens_for(Session, "do_orm_execute")
 def _bulk_write(state) -> None:  # bulk insert/update/delete statements bypass the flush
     if (state.is_insert or state.is_update or state.is_delete) and state.bind_mapper is not None \
-            and state.bind_mapper.class_.__name__ == "AttendanceSession":
+            and state.bind_mapper.class_.__name__ in _TRACKED:
         state.session.info[_TOUCHED] = True
 
 

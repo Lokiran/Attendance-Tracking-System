@@ -97,7 +97,8 @@ export function DailyHoursChart({ days, onSelectDay }: { days: DayRecord[]; onSe
 
 /** Actual (net) vs required hours per bucket: two series, one unit, one axis. */
 export function ActualVsRequiredChart({ items }: { items: TrendBucket[] }) {
-  const data = items.map((b) => ({ label: b.label, actual: +(b.net_minutes / 60).toFixed(1), required: +(b.required_minutes / 60).toFixed(1) }));
+  // Required hours of the days whose hours the timesheet recorded, so actual and required compare like with like.
+  const data = items.map((b) => ({ label: b.label, actual: +(b.net_minutes / 60).toFixed(1), required: +(b.hours_required_minutes / 60).toFixed(1) }));
   return (
     <ResponsiveContainer>
       <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -8 }} barGap={2}>
@@ -182,9 +183,10 @@ export function StatusDistributionChart({ data, onSelect }: {
   );
 }
 
+// Present / WFH / Absent: adjacent pairs validated with the dataviz palette checker (light and dark).
 export const TEAM_STACK = [
   { key: "present", label: "Present", color: "var(--st-present)" },
-  { key: "incomplete", label: "Incomplete", color: "var(--st-incomplete)" },
+  { key: "wfh", label: "WFH", color: "var(--st-wfh)" },
   { key: "absent", label: "Absent", color: "var(--st-absent)" },
 ] as const;
 
@@ -218,9 +220,8 @@ export function TeamDailyChart({ items, onSelectDate }: { items: TrendBucket[]; 
 }
 
 export const EXCEPTION_SERIES = [
-  { key: "missing_checkout", label: "Missing check-out", color: "var(--series-1)" },
-  { key: "late", label: "Late arrival", color: "var(--series-2)" },
-  { key: "short_hours", label: "Short hours", color: "var(--series-3)" },
+  { key: "late", label: "Late arrival", color: "var(--series-1)" },
+  { key: "short_hours", label: "Short hours", color: "var(--series-2)" },
 ] as const;
 
 export function ExceptionTrendChart({ items }: { items: TrendBucket[] }) {

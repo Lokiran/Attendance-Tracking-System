@@ -2,17 +2,17 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
-from app.models import DayStatus, Role
+from app.models import DayStatus, Role, WorkMode
 
 
 class Snapshot(BaseModel):
     """Mutually exclusive status counts for one date; they always sum to headcount."""
     present: int
+    wfh: int
     absent: int
-    not_checked_in: int
-    incomplete: int
+    leave: int
+    no_timesheet: int
     off: int
-    checked_in_now: int
 
 
 class PeriodStats(BaseModel):
@@ -20,13 +20,15 @@ class PeriodStats(BaseModel):
     present_expected_days: int
     present_days: int
     absent_days: int
-    incomplete_days: int
+    wfh_days: int
+    leave_days: int
+    no_timesheet_days: int
     late_days: int
-    unresolved_sessions: int
     net_minutes: int
     required_minutes: int
-    variance_minutes: int
-    attended_days_for_average: int
+    hours_days: int                 # present days with recorded hours
+    hours_required_minutes: int     # shift minutes of those days
+    variance_minutes: int           # net_minutes - hours_required_minutes
     average_net_minutes: int | None
     attendance_percentage: float | None
 
@@ -45,15 +47,16 @@ class OverviewOut(BaseModel):
     snapshot: Snapshot
     period: PeriodStats
     attendance_bands: list[BandCount]
-    pending_corrections: int
+    timesheet_through: date | None   # last date covered by a committed timesheet
 
 
 class RowDay(BaseModel):
     status: DayStatus | None
-    first_check_in: datetime | None
-    last_check_out: datetime | None
+    first_in: datetime | None
+    last_out: datetime | None
     net_minutes: int
-    has_active_session: bool
+    hours_known: bool
+    work_mode: WorkMode | None
     exceptions: list[str]
 
 
@@ -88,12 +91,12 @@ class TrendBucket(BaseModel):
     present_expected: int
     present: int
     absent: int
-    incomplete: int
+    wfh: int
     net_minutes: int
     required_minutes: int
-    attended: int
+    hours_required_minutes: int
+    attended: int                   # present days with recorded hours
     late: int
-    missing_checkout: int
     short_hours: int
     attendance_percentage: float | None
     average_net_minutes: int | None
@@ -113,9 +116,10 @@ class ExceptionRow(BaseModel):
     date: date
     status: DayStatus
     exceptions: list[str]
-    first_check_in: datetime | None
-    last_check_out: datetime | None
+    first_in: datetime | None
+    last_out: datetime | None
     net_minutes: int
+    hours_known: bool
     required_minutes: int
 
 

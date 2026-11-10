@@ -1,18 +1,23 @@
 """Repeatable demo data for local development (fictional company "Nexa Technologies").
 
 * Users are upserted by email, so re-running never duplicates people.
-* Attendance and corrections are generated only for demo users that have no attendance
-  yet, unless ``reset_demo`` is set (which regenerates them relative to today).
+* Attendance comes from monthly demo timesheets (CSV) imported through the real upload pipeline
+  (preview + commit), one per month of the last ~75 days plus the current month up to yesterday. A month
+  already imported is skipped, unless ``reset_demo`` is set (which removes the demo timesheets and the demo
+  users' timesheet days, then imports them again relative to today).
 * Passwords come from SEED_ADMIN_PASSWORD / SEED_DEMO_PASSWORD; nothing is hard-coded.
 """
 
+import calendar
+import csv
 import hashlib
+import io
 import logging
 import os
 import random
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, time, timedelta
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -21,22 +26,20 @@ from app.core import clock
 from app.core.config import get_settings
 from app.core.context import RequestContext
 from app.core.security import hash_password, validate_password_strength
-from app.core.timeutil import local_date, local_to_utc, office_tz
+from app.core.timeutil import local_date, office_tz
 from app.models import (
-    AttendanceCorrection,
-    AttendanceSession,
+    AttendanceDaily,
+    AttendanceUpload,
     Department,
     Holiday,
     Role,
-    SessionSource,
-    SessionStatus,
+    UploadStatus,
     User,
-    WorkLocation,
     WorkSchedule,
 )
-from app.services import corrections, wfo
+from app.services import wfo_upload
 from app.services.attendance_data import employee_data, schedule_data
-from app.services.attendance_rules import resolve_schedule, session_net_minutes
+from app.services.attendance_rules import resolve_schedule
 from app.services.policy import get_policy
 
 logger = logging.getLogger("ats.seed")
@@ -191,178 +194,80 @@ def _ensure_holidays(db: Session, today: date) -> None:
     db.flush()
 
 
-def _generate_attendance(db: Session, users: dict[str, User], today: date, now: datetime) -> int:
-    tz = office_tz()
-    schedules = [schedule_data(s) for s in db.scalars(select(WorkSchedule))]
-    all_holidays = {(h.holiday_date, h.department_id) for h in db.scalars(select(Holiday))}
-    created = 0
+DEMO_PREFIX = "demo_timesheet_"
+
+
+def _months(today: date) -> list[tuple[date, date]]:
+    """(first, last) day of each month to import: from HISTORY_DAYS ago up to yesterday."""
+    first = (today - timedelta(days=HISTORY_DAYS)).replace(day=1)
+    out = []
+    m = first
+    while m <= today - timedelta(days=1):
+        last = min(m.replace(day=calendar.monthrange(m.year, m.month)[1]), today - timedelta(days=1))
+        out.append((m, last))
+        m = (m.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return out
+
+
+def _timesheet_csv(db: Session, users: dict[str, User], start: date, end: date) -> bytes:
+    """One month's demo timesheet: Employee ID, Name, Date, Work Mode, In, Out. Most people are in the office
+    Monday to Wednesday and work from home on Thursday and Friday (Kiran, EMP005, is in only on Tuesdays);
+    about 4% of working days are missing (absent), 2% are leave, and a few Saturdays are worked."""
+    schedules = [schedule_data(x) for x in db.scalars(select(WorkSchedule))]
+    holidays = {(h.holiday_date, h.department_id) for h in db.scalars(select(Holiday))}
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["Employee ID", "Employee", "Date", "Work Mode", "In", "Out"])
     for code, u in users.items():
         if not u.attendance_tracked:
             continue
-        if db.scalar(select(AttendanceSession.id).where(AttendanceSession.employee_id == u.id).limit(1)):
-            continue  # already has attendance: keep it
-        rng = random.Random(f"nexa-{code}")
+        rng = random.Random(f"nexa-{code}-{start:%Y-%m}")
         emp = employee_data(u)
-        start_day = max(today - timedelta(days=HISTORY_DAYS), u.date_joined)
-        d = start_day
-        while d <= today:
-            sched = resolve_schedule(schedules, emp, d)
-            is_holiday = (d, None) in all_holidays or (d, u.department_id) in all_holidays
-            workday = sched is not None and d.isoweekday() in sched.working_days and not is_holiday
-            if sched is None:
-                d += timedelta(days=1)
-                continue
-            if not workday:
-                # Occasional weekend work shows up as extra days present.
-                if not (d.isoweekday() == 6 and rng.random() < 0.06 and not is_holiday):
-                    d += timedelta(days=1)
-                    continue
-            if d < today and rng.random() < 0.045:
-                d += timedelta(days=1)
-                continue  # unexplained absence
-
-            start_offset = int(rng.gauss(4, 14))
-            check_in = local_to_utc(d, sched.start_time, tz) + timedelta(minutes=start_offset)
-            work = sched.required_minutes + int(rng.gauss(20, 25))
-            if check_in >= now:
-                d += timedelta(days=1)
-                continue  # not checked in yet today
-            missing = d < today and rng.random() < 0.03
-            overnight = sched.end_time < sched.start_time
-            split = not missing and not overnight and rng.random() < 0.18
-            if d == today:
-                # Today: leave the day's (only) session open if it would still be running.
-                end = check_in + timedelta(minutes=work + 45)
-                if end > now:
-                    if rng.random() < 0.85:
-                        db.add(AttendanceSession(employee_id=u.id, check_in_at=check_in, status=SessionStatus.OPEN,
-                                                 source=SessionSource.SEED, break_minutes=0))
-                        created += 1
-                    d += timedelta(days=1)
-                    continue
-            if missing:
-                db.add(AttendanceSession(employee_id=u.id, check_in_at=check_in,
-                                         status=SessionStatus.MISSING_CHECKOUT, source=SessionSource.SEED,
-                                         break_minutes=0))
-                created += 1
-            elif split:
-                first_len = rng.randint(180, 240)
-                gap = rng.randint(35, 60)
-                first_out = check_in + timedelta(minutes=first_len)
-                second_in = first_out + timedelta(minutes=gap)
-                second_out = second_in + timedelta(minutes=max(work - first_len, 60))
-                for a, b in ((check_in, first_out), (second_in, second_out)):
-                    if b <= now:
-                        db.add(AttendanceSession(employee_id=u.id, check_in_at=a, check_out_at=b, break_minutes=0,
-                                                 net_minutes=session_net_minutes(a, b, 0),
-                                                 status=SessionStatus.COMPLETED, source=SessionSource.SEED))
-                        created += 1
-            else:
-                brk = rng.choice([30, 45, 45, 60])
-                check_out = check_in + timedelta(minutes=work + brk)
-                if check_out <= now:
-                    db.add(AttendanceSession(employee_id=u.id, check_in_at=check_in, check_out_at=check_out,
-                                             break_minutes=brk, net_minutes=session_net_minutes(check_in, check_out, brk),
-                                             status=SessionStatus.COMPLETED, source=SessionSource.SEED))
-                else:  # overnight shift that started yesterday and is still running
-                    db.add(AttendanceSession(employee_id=u.id, check_in_at=check_in, status=SessionStatus.OPEN,
-                                             source=SessionSource.SEED, break_minutes=0))
-                created += 1
-            d += timedelta(days=1)
-        db.flush()
-    return created
-
-
-def _demo_corrections(db: Session, users: dict[str, User], today: date) -> None:
-    """Pending, approved and rejected corrections created through the real workflow."""
-    if db.scalar(select(AttendanceCorrection.id).limit(1)) is not None:
-        return
-    tz = office_tz()
-    priya, anil = users["MGR001"], users["MGR002"]
-
-    def missing_session(emp: User):
-        return db.scalar(select(AttendanceSession).where(
-            AttendanceSession.employee_id == emp.id, AttendanceSession.status == SessionStatus.MISSING_CHECKOUT,
-            AttendanceSession.check_in_at >= local_to_utc(today - timedelta(days=25), time(0), tz))
-            .order_by(AttendanceSession.check_in_at.desc()))
-
-    def single_session_day(emp: User) -> AttendanceSession | None:
-        """A recent completed session that is the only one on its day (safe to re-time)."""
-        candidates = db.scalars(select(AttendanceSession).where(
-            AttendanceSession.employee_id == emp.id, AttendanceSession.status == SessionStatus.COMPLETED,
-            AttendanceSession.check_in_at >= local_to_utc(today - timedelta(days=25), time(0), tz),
-            AttendanceSession.check_in_at < local_to_utc(today - timedelta(days=2), time(0), tz))
-            .order_by(AttendanceSession.check_in_at.desc())).all()
-        days = [local_date(c.check_in_at, tz) for c in candidates]
-        return next((c for c, d in zip(candidates, days) if days.count(d) == 1), None)
-
-    def absent_weekday(emp: User, days_back: int) -> date | None:
-        for i in range(days_back, days_back + 20):
-            d = today - timedelta(days=i)
-            if d.isoweekday() > 5:
-                continue
-            lo = local_to_utc(d, time(0), tz)
-            hi = local_to_utc(d + timedelta(days=1), time(0), tz)
-            if db.scalar(select(AttendanceSession.id).where(
-                    AttendanceSession.employee_id == emp.id, AttendanceSession.check_in_at >= lo,
-                    AttendanceSession.check_in_at < hi)) is None:
-                return d
-        return None
-
-    for emp, reviewer, outcome in ((users["EMP001"], priya, "pending"), (users["EMP002"], priya, "approve"),
-                                   (users["EMP003"], anil, "reject"), (users["EMP004"], anil, "approve")):
-        s = missing_session(emp)
-        if s is not None:
-            day = local_date(s.check_in_at, tz)
-            c = corrections.submit(
-                db, emp, attendance_date=day, check_in_time=s.check_in_at.astimezone(tz).time().replace(microsecond=0),
-                check_out_time=time(18, 15), check_out_next_day=False, break_minutes=45,
-                reason="Forgot to check out before leaving the office", session_id=s.id, ctx=SEED_CTX)
-        elif (day := absent_weekday(emp, 3)) is None:
-            s = single_session_day(emp)
-            if s is None:
-                continue
-            local_in = s.check_in_at.astimezone(tz)
-            c = corrections.submit(
-                db, emp, attendance_date=local_in.date(), check_in_time=local_in.time().replace(microsecond=0),
-                check_out_time=time(20, 30), check_out_next_day=False, break_minutes=s.break_minutes,
-                reason="Stayed late for a production release; check-out was recorded too early", session_id=s.id,
-                ctx=SEED_CTX)
-        else:
-            c = corrections.submit(
-                db, emp, attendance_date=day, check_in_time=time(9, 35), check_out_time=time(18, 20),
-                check_out_next_day=False, break_minutes=45,
-                reason="Badge reader outage - attended in person but could not check in", session_id=None,
-                ctx=SEED_CTX)
-        if outcome == "approve":
-            corrections.approve(db, reviewer, c.id, "Verified with the team calendar", SEED_CTX)
-        elif outcome == "reject":
-            corrections.reject(db, reviewer, c.id, "No record of attendance on this date", SEED_CTX)
-
-
-def _demo_work_locations(db: Session, users: dict[str, User], today: date) -> int:
-    """Tag demo check-ins as Office or WFH (only untagged SEED sessions, so re-runs change nothing):
-    most people work from the office Monday to Wednesday, Kiran (EMP005) only on Tuesdays."""
-    tz = office_tz()
-    tagged = 0
-    for code, u in users.items():
-        if not u.attendance_tracked:
-            continue
         office_days = {1} if code == "EMP005" else {0, 1, 2}
-        for s in db.scalars(select(AttendanceSession).where(AttendanceSession.employee_id == u.id,
-                                                            AttendanceSession.source == SessionSource.SEED,
-                                                            AttendanceSession.work_location.is_(None))):
-            weekday = local_date(s.check_in_at, tz).weekday()
-            s.work_location = WorkLocation.OFFICE if weekday in office_days else WorkLocation.WFH
-            tagged += 1
-    db.flush()
-    return tagged
+        d = max(start, u.date_joined)
+        while d <= end:
+            sched = resolve_schedule(schedules, emp, d)
+            day, d = d, d + timedelta(days=1)
+            if sched is None:
+                continue
+            holiday = (day, None) in holidays or (day, u.department_id) in holidays
+            workday = day.isoweekday() in sched.working_days and not holiday
+            if not workday and not (day.isoweekday() == 6 and not holiday and rng.random() < 0.06):
+                continue
+            roll = rng.random()
+            if workday and roll < 0.04:
+                continue  # absent: not in the timesheet
+            if workday and roll < 0.06:
+                w.writerow([u.employee_code, u.full_name, day.strftime("%d/%m/%Y"), "Leave", "", ""])
+                continue
+            mode = "WFO" if (day.weekday() in office_days or not workday) else "WFH"
+            start_min = sched.start_time.hour * 60 + sched.start_time.minute + int(rng.gauss(4, 14))
+            end_min = start_min + sched.required_minutes + int(rng.gauss(20, 25)) + rng.choice([30, 45, 60])
+            t_in = f"{start_min // 60 % 24:02d}:{start_min % 60:02d}"
+            t_out = f"{end_min // 60 % 24:02d}:{end_min % 60:02d}"
+            w.writerow([u.employee_code, u.full_name, day.strftime("%d/%m/%Y"), mode, t_in, t_out])
+    return buf.getvalue().encode("utf-8")
+
+
+def _import_timesheets(db: Session, users: dict[str, User], admin: User, today: date) -> int:
+    """Import each month's demo timesheet through the real pipeline (preview, then commit)."""
+    imported = 0
+    for start, end in _months(today):
+        name = f"{DEMO_PREFIX}{start:%Y-%m}.csv"
+        if db.scalar(select(AttendanceUpload.id).where(AttendanceUpload.filename == name,
+                                                       AttendanceUpload.status == UploadStatus.COMMITTED)):
+            continue
+        upload = wfo_upload.preview(db, admin, name, _timesheet_csv(db, users, start, end), SEED_CTX)
+        wfo_upload.commit(db, admin, upload.id, overwrite_overrides=False, ctx=SEED_CTX)
+        imported += 1
+    return imported
 
 
 def _reset_demo(db: Session, users: dict[str, User]) -> None:
+    """Remove the demo timesheets and the demo users' timesheet days (only with --reset-demo)."""
     ids = [u.id for u in users.values()]
-    db.execute(delete(AttendanceCorrection).where(AttendanceCorrection.employee_id.in_(ids)))
-    db.execute(delete(AttendanceSession).where(AttendanceSession.employee_id.in_(ids)))
+    db.execute(delete(AttendanceDaily).where(AttendanceDaily.employee_id.in_(ids)))
+    db.execute(delete(AttendanceUpload).where(AttendanceUpload.filename.like(f"{DEMO_PREFIX}%")))
     db.flush()
 
 
@@ -386,12 +291,7 @@ def run(db: Session, *, reset_demo: bool = False, reset_passwords: bool = False)
         _reset_demo(db, users)
     _ensure_schedules(db, users)
     _ensure_holidays(db, today)
-    created = _generate_attendance(db, users, today, now)
     db.commit()
-    _demo_corrections(db, users, today)
-    db.commit()
-    _demo_work_locations(db, users, today)
-    tracked = [u for u in users.values() if u.attendance_tracked]
-    wfo.refresh_range(db, tracked, today - timedelta(days=HISTORY_DAYS), today)
-    db.commit()
-    return {"users": len(users), "sessions_created": created, "today": today.isoformat()}
+    admin = db.scalar(select(User).where(User.email == admin_email))
+    imported = _import_timesheets(db, users, admin, today)
+    return {"users": len(users), "timesheets_imported": imported, "today": today.isoformat()}

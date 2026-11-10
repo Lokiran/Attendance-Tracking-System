@@ -21,9 +21,9 @@ backend/app/
   models/     users, departments, attendance_sessions, work_schedules, holidays, leave_records (legacy, unused),
               attendance_corrections, audit_logs, user_sessions, login_attempts, attendance_policy
   schemas/    Pydantic request/response models
-  services/   attendance_rules, attendance_data (bulk loading), attendance_service (check-in/out),
-              dashboard, corrections, admin_users, configuration, org, reports, scope,
-              auth_service, audit, policy
+  services/   attendance_rules, attendance_data (bulk loading of timesheet days), attendance_service,
+              timesheet_files (CSV / Excel / PDF reading), wfo_upload (preview / commit), wfo, wfo_rules,
+              dashboard, admin_users, configuration, org, reports, scope, auth_service, audit, policy
   api/        deps (auth, CSRF, roles, paging) + routes
   seed.py     repeatable demo data;  cli.py  seed / create-admin
 frontend/src/
@@ -89,10 +89,10 @@ subtrees are computed with a recursive CTE (`UNION`, so they're cycle-safe).
 
 | Capability | Employee | Manager | Admin |
 |---|---|---|---|
-| Own attendance, check-in/out, requests | ✔ | ✔ | ✔ |
+| Own attendance (from imported timesheets) | ✔ | ✔ | ✔ |
 | Read another person's attendance | ✘ | reporting **subtree** only | everyone |
 | Team dashboards / CSV | ✘ | own subtree, or a sub-manager's subtree | any manager / department / organisation |
-| Approve corrections | ✘ | subtree (if policy allows), never own | everyone except self |
+| Import timesheets, override a day | ✘ | ✘ | ✔ |
 | Users, departments, schedules, holidays, policy, audit log, org hierarchy | ✘ | ✘ | ✔ |
 
 * Enforced in the backend on every endpoint via dependencies (`require_roles`) and
@@ -109,7 +109,7 @@ subtrees are computed with a recursive CTE (`UNION`, so they're cycle-safe).
 * Manager and admin dashboards poll every `VITE_DASHBOARD_REFRESH_MS` (30 s default; minimum
   5 s; `0` disables). TanStack Query pauses polling while the tab is hidden.
 * The "Updated hh:mm" label shows the last successful fetch.
-* Check-in/out, approvals and admin changes invalidate the affected query families
+* Timesheet imports, overrides and admin changes invalidate the affected query families
   immediately.
 
 ## Scale
@@ -135,15 +135,11 @@ Interactive documentation: `http://127.0.0.1:8000/api/docs` (Swagger) and `/api/
 | POST | `/api/auth/logout` | Revoke the current session |
 | GET | `/api/auth/me` | Current user profile and CSRF token |
 | POST | `/api/auth/change-password` | Change password (signs out other sessions) |
-| GET | `/api/attendance/current` | Today's status and active session |
-| POST | `/api/attendance/check-in` | Start a session at the current server time |
-| POST | `/api/attendance/check-out` | Close the active session (optional `break_minutes`) |
+| GET | `/api/attendance/current` | Today, my shift and how far imported timesheets reach |
 | GET | `/api/attendance/employees/{id}/summary` | Period summary |
 | GET | `/api/attendance/employees/{id}/trends` | Day/week/month buckets |
 | GET | `/api/attendance/employees/{id}/days` | Daily records (filters, pagination) |
-| GET | `/api/attendance/employees/{id}/days/{day}` | One day with its sessions (incl. voided) |
-| GET/POST | `/api/corrections` | List mine / reviewable; submit a request |
-| POST | `/api/corrections/{id}/approve` `…/reject` `…/cancel` | Workflow actions |
+| GET | `/api/attendance/employees/{id}/days/{day}` | One day with the timesheet entry behind it |
 | GET | `/api/dashboard/overview` | Snapshot cards + period statistics for a scope |
 | GET | `/api/dashboard/employees` | Per-employee table (search, status, sort, paging) |
 | GET | `/api/dashboard/trends` | Team trends by day/week/month |
@@ -154,7 +150,7 @@ Interactive documentation: `http://127.0.0.1:8000/api/docs` (Swagger) and `/api/
 | GET | `/api/team/members` | People in my scope (`search`, `limit` for pickers) |
 | GET | `/api/team/members/{id}` | One person in my scope (404 otherwise) |
 | GET | `/api/me/wfo`, `/api/team/wfo`, `/api/org/wfo` (+ `/export.xlsx`) | WFO month for me / my team / the organisation; see [wfo.md](wfo.md) |
-| POST | `/api/admin/attendance-uploads` (+ `/{id}/commit`, `/{id}/discard`) | Attendance / badge file import with preview (admin) |
+| POST | `/api/admin/attendance-uploads` (+ `/{id}/commit`, `/{id}/discard`, `/{id}/create-employees`) | Timesheet import (Excel, CSV, PDF) with preview (admin) |
 | PUT / DELETE | `/api/admin/attendance/{employee_id}/{date}/work-mode` | Admin work-mode override (audited) |
 | GET/POST | `/api/admin/users` | List/search, create |
 | GET/PATCH | `/api/admin/users/{id}` | Read, update (role, manager, department, active…) |
@@ -173,8 +169,9 @@ Interactive documentation: `http://127.0.0.1:8000/api/docs` (Swagger) and `/api/
 | GET | `/api/reports/department-attendance.csv` | Department comparison (admin) |
 | GET | `/api/reports/exceptions.csv` | Exceptions |
 
-## Limits of manual check-in
+## Source of attendance
 
-The system records attendance **events** that people submit from their own browser. It does
-not prove physical presence: there is no badge, geofence or network-location check. Treat the
-data as self-reported, and use the audit trail and manager review for oversight.
+Attendance is imported from the organisation's monthly timesheets (Excel, CSV or PDF) by the HR admin;
+the app does not record or verify presence itself. Every import is previewed, committed explicitly and
+audited, and single days can be overridden by the admin (also audited). The check-in / correction tables
+of earlier versions are kept in the database, unused.

@@ -44,8 +44,8 @@ def build(employees: int, managers: int, password: str) -> None:
     from app.core.security import hash_password
     from app.core.timeutil import local_to_utc, office_tz
     from app.db.session import SessionLocal
-    from app.models import AttendanceSession, Department, Role, SessionSource, SessionStatus, User, WorkSchedule
-    from app.services.attendance_rules import session_net_minutes
+    from app.models import (AttendanceDaily, AttendanceUpload, AttendanceUploadRow, DailyStatus, Department, Role,
+                            UploadStatus, User, WorkMode, WorkSchedule)
     from app.services.policy import get_policy
 
     tz, rng, today = office_tz(), random.Random(7), date.today()
@@ -72,29 +72,37 @@ def build(employees: int, managers: int, password: str) -> None:
             for i in range(employees)])
         db.commit()
         ids = list(db.scalars(select(User.id).where(User.attendance_tracked.is_(True))))
+        # One committed timesheet covering the whole history for everyone (as monthly imports would).
+        first = today - timedelta(days=HISTORY_DAYS)
+        upload = AttendanceUpload(filename="benchmark.csv", file_sha256="0" * 64, file_size=1,
+                                  status=UploadStatus.COMMITTED, row_count=len(ids), error_count=0,
+                                  period_start=first, period_end=today - timedelta(days=1))
+        db.add(upload)
+        db.flush()
+        db.execute(insert(AttendanceUploadRow), [dict(upload_id=upload.id, row_number=i + 2, employee_ref=str(uid),
+                                                      employee_id=uid, work_date=first, is_badge=False)
+                                                 for i, uid in enumerate(ids)])
         batch: list[dict] = []
         for d in (today - timedelta(days=k) for k in range(HISTORY_DAYS, 0, -1)):
             if d.isoweekday() > 5:
                 continue
             for uid in ids:
                 if rng.random() < 0.06:
-                    continue  # absent
+                    continue  # absent: not in the timesheet
                 a = local_to_utc(d, dtime(9, 30), tz) + timedelta(minutes=rng.randint(-20, 40))
-                b = a + timedelta(minutes=rng.randint(480, 560))
-                missing = rng.random() < 0.01
-                batch.append(dict(employee_id=uid, check_in_at=a, check_out_at=None if missing else b,
-                                  break_minutes=0 if missing else 45,
-                                  net_minutes=None if missing else session_net_minutes(a, b, 45),
-                                  status=SessionStatus.MISSING_CHECKOUT if missing else SessionStatus.COMPLETED,
-                                  source=SessionSource.SEED))
+                wfh = rng.random() < 0.3
+                batch.append(dict(employee_id=uid, work_date=d, office_minutes=0, wfh_minutes=0, corrected=False,
+                                  conflicts=[], status=DailyStatus.PRESENT, upload_id=upload.id,
+                                  upload_work_mode=WorkMode.WFH if wfh else WorkMode.OFFICE,
+                                  upload_minutes=rng.randint(435, 515), first_in=None if wfh else a))
                 if len(batch) >= 20000:
-                    db.execute(insert(AttendanceSession), batch)
+                    db.execute(insert(AttendanceDaily), batch)
                     batch.clear()
         if batch:
-            db.execute(insert(AttendanceSession), batch)
+            db.execute(insert(AttendanceDaily), batch)
         db.commit()
         print(f"built {DB_FILE}: {db.scalar(select(func.count()).select_from(User))} users, "
-              f"{db.scalar(select(func.count()).select_from(AttendanceSession))} sessions")
+              f"{db.scalar(select(func.count()).select_from(AttendanceDaily))} timesheet days")
 
 
 def page_calls(rng: dict, admin_page: bool) -> list[tuple[str, dict]]:

@@ -36,9 +36,10 @@ function Comparisons({ start, end, onDate }: { start: string; end: string; onDat
     },
     { key: "head", header: "Head", cell: (d) => d.head_name ?? "—" },
     { key: "hc", header: "People", align: "right", cell: (d) => d.headcount },
-    { key: "present", header: "Present", align: "right", cell: (d) => d.snapshot.present },
-    { key: "absent", header: "Absent / not in", align: "right", cell: (d) => d.snapshot.absent + d.snapshot.not_checked_in },
-    { key: "avg", header: "Avg net / day", align: "right", cell: (d) => formatMinutes(d.period.average_net_minutes) },
+    { key: "present", header: "In office", align: "right", cell: (d) => d.snapshot.present },
+    { key: "wfh", header: "WFH", align: "right", cell: (d) => d.snapshot.wfh },
+    { key: "absent", header: "Absent", align: "right", cell: (d) => d.snapshot.absent },
+    { key: "avg", header: "Avg office hours / day", align: "right", cell: (d) => formatMinutes(d.period.average_net_minutes) },
     { key: "pct", header: "Attendance", align: "right", cell: (d) => formatPercent(d.period.attendance_percentage) },
   ];
 
@@ -63,7 +64,7 @@ function Comparisons({ start, end, onDate }: { start: string; end: string; onDat
           error={managers.error}
           isEmpty={!mgrRows.some((m) => m.period.attendance_percentage !== null)}
           height={Math.max(180, mgrRows.length * 36)}
-          table={{ columns: ["Manager", "Team size", "Attendance", "Avg net/day"], rows: mgrRows.map((m) => [m.manager_name, m.team_size, formatPercent(m.period.attendance_percentage), formatMinutes(m.period.average_net_minutes)]) }}
+          table={{ columns: ["Manager", "Team size", "Attendance", "Avg office hours/day"], rows: mgrRows.map((m) => [m.manager_name, m.team_size, formatPercent(m.period.attendance_percentage), formatMinutes(m.period.average_net_minutes)]) }}
         >
           <RankedBarChart unit="%" max={100} data={mgrRows.map((m) => ({ id: m.manager_id, label: m.manager_name, value: m.period.attendance_percentage, hint: m.team_size + " people" }))} onSelect={(id) => navigate(withRange("/admin/managers/" + id, start, end))} />
         </ChartCard>
@@ -83,7 +84,7 @@ function Comparisons({ start, end, onDate }: { start: string; end: string; onDat
           loading={depts.isLoading}
           isEmpty={!deptRows.some((d) => d.period.average_net_minutes)}
           height={Math.max(180, deptRows.length * 36)}
-          table={{ columns: ["Department", "Avg net/day", "Net total"], rows: deptRows.map((d) => [d.department_name, formatMinutes(d.period.average_net_minutes), formatMinutes(d.period.net_minutes)]) }}
+          table={{ columns: ["Department", "Avg office hours/day", "Office hours total"], rows: deptRows.map((d) => [d.department_name, formatMinutes(d.period.average_net_minutes), formatMinutes(d.period.net_minutes)]) }}
         >
           <RankedBarChart unit="h" data={deptRows.map((d) => ({ id: d.department_id, label: d.department_name, value: hours(d.period.average_net_minutes, 2) }))} onSelect={(id) => id && navigate(withRange("/admin/departments/" + id + "/dashboard", start, end))} />
         </ChartCard>

@@ -156,7 +156,7 @@ export function LoginPage() {
           )}
         </div>
         <p className="mt-4 text-center text-xs text-ink-3">
-          Attendance is recorded from manual check-in and check-out events; it does not verify physical presence.
+          Attendance comes from the monthly timesheets HR imports; this app does not record or verify presence itself.
         </p>
       </div>
     </div>

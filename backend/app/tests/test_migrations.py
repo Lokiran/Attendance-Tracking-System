@@ -24,7 +24,7 @@ def empty_schema():
     reset_schema(engine)
 
 
-HEAD = "0004"
+HEAD = "0005"
 
 
 def test_upgrade_downgrade_reupgrade(empty_schema):
@@ -367,3 +367,35 @@ def test_0004_guards_both_directions(empty_schema):
     assert "attendance_uploads" not in inspect(engine).get_table_names()
     assert "work_location" not in {c["name"] for c in inspect(engine).get_columns("attendance_sessions")}
     upgrade("0004")
+
+
+# --------------------------------------------------------------------------- 0005 (timesheet periods)
+
+UPLOAD_ROW = ("INSERT INTO attendance_uploads (filename, file_sha256, file_size, status, row_count, error_count, "
+              "summary, overwrite_overrides, created_at, committed_at) VALUES ('{name}', '{sha}', 10, '{status}', 1, 0, "
+              "'{summary}', false, '2026-11-10 06:00:00', {committed})")
+
+
+def test_0005_backfills_periods_of_committed_timesheets(empty_schema):
+    upgrade("0001")
+    _seed_0001_rows()
+    upgrade("0004")
+    month = '{"date_from": "2026-09-01", "date_to": "2026-09-29"}'
+    partial = '{"date_from": "2026-11-03", "date_to": "2026-11-06"}'
+    _exec(UPLOAD_ROW.format(name="sept.xlsx", sha="a" * 64, status="COMMITTED", summary=month,
+                            committed="'2026-11-10 06:00:00'"))
+    _exec(UPLOAD_ROW.format(name="nov.csv", sha="b" * 64, status="COMMITTED", summary=partial,
+                            committed="'2026-11-10 06:00:00'"))
+    _exec(UPLOAD_ROW.format(name="draft.csv", sha="c" * 64, status="PREVIEW", summary=month, committed="NULL"))
+    upgrade("0005")
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT filename, period_start, period_end FROM attendance_uploads ORDER BY id")).all()
+    as_text = [(n, str(a) if a else None, str(b) if b else None) for n, a, b in rows]
+    assert as_text == [("sept.xlsx", "2026-09-01", "2026-09-30"),   # whole month
+                       ("nov.csv", "2026-11-01", "2026-11-09"),     # up to the day before the commit
+                       ("draft.csv", None, None)]                    # previews cover nothing
+    downgrade("0004")
+    assert "period_start" not in {c["name"] for c in inspect(engine).get_columns("attendance_uploads")}
+    assert len(_rows("attendance_uploads")) == 3  # uploads kept
+    upgrade("0005")

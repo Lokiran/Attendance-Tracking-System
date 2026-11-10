@@ -35,7 +35,6 @@ export function EmployeeDetailPage() {
   return (
     <EmployeeAttendanceView
       employeeId={employeeId}
-      isSelf={false}
       header={
         <PageHeader
           breadcrumb={

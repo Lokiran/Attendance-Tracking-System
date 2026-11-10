@@ -27,7 +27,7 @@ os.environ["CORS_ORIGINS"] = "http://localhost:5173"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import insert, text  # noqa: E402
 
 import app.models  # noqa: E402,F401
 from app.core import clock  # noqa: E402
@@ -37,7 +37,19 @@ from app.core.timeutil import local_to_utc  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import AttendancePolicy, Department, Role, User, WorkSchedule  # noqa: E402
+from app.models import (  # noqa: E402
+    AttendanceDaily,
+    AttendancePolicy,
+    AttendanceUpload,
+    AttendanceUploadRow,
+    DailyStatus,
+    Department,
+    Role,
+    UploadStatus,
+    User,
+    WorkMode,
+    WorkSchedule,
+)
 from app.services import attendance_data, record_cache  # noqa: E402
 from app.tests.migration_utils import drop_leftover_tables  # noqa: E402
 
@@ -182,6 +194,33 @@ class Factory:
         self.db.add(AttendancePolicy(id=1))
         self.db.commit()
         return s
+
+    def timesheet(self, user: User, d: date, mode: WorkMode | None = WorkMode.OFFICE, minutes: int | None = None,
+                  first_in: datetime | None = None, last_out: datetime | None = None) -> AttendanceDaily:
+        """One imported timesheet day (as a committed upload leaves it)."""
+        row = AttendanceDaily(employee_id=user.id, work_date=d, office_minutes=0, wfh_minutes=0, corrected=False,
+                              conflicts=[], status=DailyStatus.ABSENT, upload_work_mode=mode, upload_minutes=minutes,
+                              first_in=first_in, last_out=last_out)
+        self.db.add(row)
+        self.db.commit()
+        return row
+
+    def cover(self, start: date, end: date, people) -> AttendanceUpload:
+        """A committed timesheet covering start..end for ``people`` (users or ids): their scheduled days
+        missing from it are absent."""
+        ids = [p if isinstance(p, int) else p.id for p in people]
+        up = AttendanceUpload(filename=f"timesheet_{start}.csv", file_sha256="0" * 64, file_size=1,
+                              status=UploadStatus.COMMITTED, row_count=len(ids), error_count=0,
+                              committed_at=datetime.combine(end, time(23, 0), tzinfo=UTC),
+                              period_start=start, period_end=end)
+        self.db.add(up)
+        self.db.flush()
+        if ids:
+            self.db.execute(insert(AttendanceUploadRow), [
+                dict(upload_id=up.id, row_number=i + 2, employee_ref=str(eid), employee_id=eid, work_date=start,
+                     is_badge=False) for i, eid in enumerate(ids)])
+        self.db.commit()
+        return up
 
 
 @pytest.fixture

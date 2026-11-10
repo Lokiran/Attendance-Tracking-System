@@ -1,40 +1,35 @@
 import csv
 import io
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time
 
 from sqlalchemy import func, select
 
-from app.models import AttendanceSession, AuditLog, LeaveRecord, LeaveType, RequestStatus, SessionSource, \
-    SessionStatus, User
+from app.models import AttendanceDaily, AttendanceUpload, AuditLog, LeaveRecord, LeaveType, RequestStatus, User, \
+    UploadStatus, WorkMode
 from app.services.reports import safe_cell
 from app.tests.conftest import login
 
 RANGE = {"start": "2026-03-09", "end": "2026-03-10"}
+MON, TUE = date(2026, 3, 9), date(2026, 3, 10)
 
 
-def add_session(db, user, start: datetime, end: datetime | None, status=SessionStatus.COMPLETED):
-    db.add(AttendanceSession(employee_id=user.id, check_in_at=start, check_out_at=end,
-                             net_minutes=int((end - start).total_seconds() // 60) if end else None,
-                             status=status, source=SessionSource.SEED))
-    db.commit()
-
-
-def test_overview_snapshot_categories_are_exclusive(client, frozen, org, db):
-    # today = Tue 10 Mar 12:00 IST
-    add_session(db, org.rahul, datetime(2026, 3, 10, 4, 0, tzinfo=UTC), None, SessionStatus.OPEN)   # present
-    add_session(db, org.sneha, datetime(2026, 3, 10, 3, 0, tzinfo=UTC), datetime(2026, 3, 10, 5, 0, tzinfo=UTC))
+def test_overview_snapshot_categories_are_exclusive(client, frozen, org, db, factory):
+    # today = Tue 10 Mar 12:00 IST; a timesheet that already lists today
+    factory.timesheet(org.rahul, TUE)
+    factory.timesheet(org.sneha, TUE, WorkMode.WFH)
+    factory.timesheet(org.arjun, TUE, WorkMode.LEAVE)
     # A row left in the legacy leave table (feature removed) must not change anyone's status.
-    db.add(LeaveRecord(employee_id=org.arjun.id, start_date=datetime(2026, 3, 10).date(),
-                       end_date=datetime(2026, 3, 10).date(), leave_type=LeaveType.SICK, status=RequestStatus.APPROVED))
+    db.add(LeaveRecord(employee_id=org.vikram.id, start_date=TUE, end_date=TUE, leave_type=LeaveType.SICK,
+                       status=RequestStatus.APPROVED))
     db.commit()
     login(client, org.admin)
     o = client.get("/api/dashboard/overview", params=RANGE).json()
     snap = o["snapshot"]
     assert o["headcount"] == 7
-    assert "on_leave" not in snap and "pending_leave" not in o
-    assert snap["present"] == 2 and snap["not_checked_in"] == 5
-    assert snap["checked_in_now"] == 1
-    assert sum(snap[k] for k in ("present", "absent", "not_checked_in", "incomplete", "off")) == 7
+    assert "on_leave" not in snap and "pending_leave" not in o and "checked_in_now" not in snap
+    assert (snap["present"], snap["wfh"], snap["leave"], snap["no_timesheet"]) == (1, 1, 1, 4)
+    assert sum(snap[k] for k in ("present", "wfh", "absent", "leave", "no_timesheet", "off")) == 7
+    assert o["timesheet_through"] is None
 
 
 def test_untracked_accounts_excluded_from_stats(client, org, db):
@@ -45,28 +40,31 @@ def test_untracked_accounts_excluded_from_stats(client, org, db):
     assert client.get("/api/dashboard/overview", params=RANGE).json()["headcount"] == 6
 
 
-def test_employee_rows_search_filter_sort(client, org, db):
-    add_session(db, org.rahul, datetime(2026, 3, 9, 4, 0, tzinfo=UTC), datetime(2026, 3, 9, 12, 0, tzinfo=UTC))
+def test_employee_rows_search_filter_sort(client, org, db, factory):
+    factory.timesheet(org.rahul, MON, minutes=480)
     login(client, org.priya)
     rows = client.get("/api/dashboard/employees", params={**RANGE, "search": "sne"}).json()["items"]
     assert [r["full_name"] for r in rows] == ["Sneha Rao"]
     rows = client.get("/api/dashboard/employees", params={**RANGE, "sort": "net_minutes", "order": "desc"}).json()
     assert rows["items"][0]["full_name"] == "Rahul Reddy" and rows["items"][0]["period"]["net_minutes"] == 480
     rows = client.get("/api/dashboard/employees",
-                      params={**RANGE, "status": "NOT_YET_CHECKED_IN"}).json()["items"]
+                      params={**RANGE, "status": "NO_TIMESHEET"}).json()["items"]
     assert len(rows) == 2
 
 
-def test_trends_and_exceptions(client, org, db):
-    add_session(db, org.rahul, datetime(2026, 3, 9, 5, 0, tzinfo=UTC), None, SessionStatus.MISSING_CHECKOUT)
+def test_trends_and_exceptions(client, org, db, factory):
+    factory.cover(date(2026, 3, 2), MON, [org.rahul, org.sneha])
+    # 10:30 IST in, 5 h: late and short. Sneha is not in the timesheet: absent.
+    factory.timesheet(org.rahul, MON, minutes=300, first_in=datetime(2026, 3, 9, 5, 0, tzinfo=UTC))
     login(client, org.priya)
     t = client.get("/api/dashboard/trends", params={"start": "2026-03-02", "end": "2026-03-10",
                                                      "granularity": "week"}).json()
     assert len(t["items"]) == 2 and t["headcount"] == 2
+    assert t["items"][0]["absent"] == 10 and t["items"][1]["present"] == 1 and t["items"][1]["attended"] == 1
     e = client.get("/api/dashboard/exceptions", params=RANGE).json()
-    assert e["counts"]["MISSING_CHECKOUT"] == 1
-    assert client.get("/api/dashboard/exceptions", params={**RANGE, "exception_type": "MISSING_CHECKOUT"}
-                      ).json()["total"] == 1
+    assert e["counts"] == {"LATE_ARRIVAL": 1, "SHORT_HOURS": 1, "ABSENT": 1}
+    late = client.get("/api/dashboard/exceptions", params={**RANGE, "exception_type": "LATE_ARRIVAL"}).json()
+    assert late["total"] == 1 and late["items"][0]["first_in"].startswith("2026-03-09T05:00")
 
 
 def test_department_and_manager_comparison(client, org):
@@ -123,13 +121,17 @@ def test_seed_is_repeatable(frozen, db, monkeypatch):
     frozen.set_local(datetime(2026, 3, 10).date(), time(12, 0))
     first = seed.run(db)
     users_after_first = db.scalar(select(func.count()).select_from(User))
-    sessions_after_first = db.scalar(select(func.count()).select_from(AttendanceSession))
-    assert first["sessions_created"] > 300
-    seed.run(db)
+    days_after_first = db.scalar(select(func.count()).select_from(AttendanceDaily))
+    assert first["timesheets_imported"] == 4  # Dec, Jan, Feb and 1-9 Mar, through the real upload pipeline
+    assert days_after_first > 600
+    uploads = db.scalars(select(AttendanceUpload)).all()
+    assert all(u.status == UploadStatus.COMMITTED and u.error_count == 0 and u.period_start for u in uploads)
+    modes = {m for (m,) in db.execute(select(AttendanceDaily.upload_work_mode).distinct())}
+    assert {WorkMode.OFFICE, WorkMode.WFH, WorkMode.LEAVE} <= modes
+    again = seed.run(db)
+    assert again["timesheets_imported"] == 0
     assert db.scalar(select(func.count()).select_from(User)) == users_after_first == 15
-    assert db.scalar(select(func.count()).select_from(AttendanceSession)) == sessions_after_first
-    assert db.scalar(select(func.count()).select_from(AttendanceSession).where(
-        AttendanceSession.status == SessionStatus.MISSING_CHECKOUT)) > 0
+    assert db.scalar(select(func.count()).select_from(AttendanceDaily)) == days_after_first
 
 
 def test_seed_requires_passwords(db, monkeypatch):
@@ -141,8 +143,8 @@ def test_seed_requires_passwords(db, monkeypatch):
         seed.run(db)
 
 
-def test_employee_trends_endpoint(client, org, db):
-    add_session(db, org.rahul, datetime(2026, 3, 9, 4, 0, tzinfo=UTC), datetime(2026, 3, 9, 12, 0, tzinfo=UTC))
+def test_employee_trends_endpoint(client, org, db, factory):
+    factory.timesheet(org.rahul, MON, minutes=480)
     login(client, org.rahul)
     t = client.get(f"/api/attendance/employees/{org.rahul.id}/trends",
                    params={"start": "2026-02-01", "end": "2026-03-10", "granularity": "month"}).json()

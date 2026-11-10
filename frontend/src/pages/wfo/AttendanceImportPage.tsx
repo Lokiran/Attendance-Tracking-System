@@ -149,6 +149,7 @@ function Preview({ upload, onDone, onReread, rereading }: {
           <p className="flex items-center gap-2 text-sm text-ink"><CheckCircle2 className="size-4" style={{ color: "var(--good)" }} aria-hidden />
             Applied {upload.commit_summary.applied_days} day(s) ({upload.commit_summary.created_days} new); skipped {upload.commit_summary.skipped_overrides} overridden day(s)
             {upload.commit_summary.overrides_overwritten ? `; replaced ${upload.commit_summary.overrides_overwritten} override(s)` : ""}.
+            {upload.period_start && upload.period_end && ` This timesheet covers ${formatDate(upload.period_start)} – ${formatDate(upload.period_end)}.`}
           </p>
         )}
         {unknown.length > 0 && (
@@ -237,19 +238,21 @@ export function AttendanceImportPage() {
   const canReread = current?.status === "PREVIEW" && previewFile?.uploadId === current.id;
   return (
     <div className="space-y-5">
-      <PageHeader title="Import attendance" description="Upload an attendance, presence or badge / swipe export (CSV or Excel). You see a preview first; nothing changes until you import." />
+      <PageHeader title="Import timesheets" description="Attendance comes from these imports: upload each month's timesheet (Excel, CSV or PDF). You see a preview first; nothing changes until you import." />
       <Card className="p-5">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-64 flex-1">
             <label htmlFor="wfo-file" className="mb-1.5 block text-sm font-medium text-ink">File</label>
-            <input ref={fileRef} id="wfo-file" type="file" accept=".csv,.xlsx,.xlsm" onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            <input ref={fileRef} id="wfo-file" type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,.pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               className="block w-full rounded-lg border border-line bg-surface text-sm text-ink file:mr-3 file:border-0 file:bg-surface-2 file:px-3 file:py-2 file:text-sm file:font-medium file:text-ink" />
           </div>
           <Button icon={<FileUp className="size-4" />} disabled={!file} loading={upload.isPending && !!file} onClick={() => file && upload.mutate({ f: file })}>Upload and preview</Button>
         </div>
         <details className="mt-4 text-xs text-ink-2">
-          <summary className="cursor-pointer font-medium text-ink">Expected columns</summary>
+          <summary className="cursor-pointer font-medium text-ink">Accepted files and columns</summary>
           <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li><b>Files:</b> Excel (.xlsx, .xls), CSV / TSV / TXT, or a <b>PDF</b> of the sheet (a PDF exported or printed from Excel; a scanned image cannot be read). Up to 5 MB.</li>
+            <li>A committed timesheet <b>covers</b> its months, up to the day before the import, for the people in it: their scheduled days in that period that are not in the file are absent. Months not imported yet show “No timesheet”, not absent, and a partial file never affects anyone else.</li>
             <li><b>Employee ID</b> (or employee code / email) and <b>Date</b> (31/03/2026, 2026-03-31 or an Excel date): required. An <b>Employee</b> / name column next to the ID is used to check names.</li>
             <li>In a workbook, the month&apos;s sheet (like &quot;September 2026&quot;) is read, or else the first sheet with these columns; you can pick another sheet in the preview. The header may be below a title row, and a pivot table beside the data is ignored.</li>
             <li>With only ID and date, every listed day is an <b>office</b> day (you can switch to WFH in the preview). Dates with day and month swapped are read in the month the file covers.</li>

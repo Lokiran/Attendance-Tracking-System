@@ -13,7 +13,6 @@ import { LoginPage } from "@/pages/LoginPage";
 import { MyDashboard } from "@/pages/MyDashboard";
 
 // Route-level code splitting: each page loads on first visit.
-const ApprovalsPage = lazy(() => import("@/pages/ApprovalsPage").then((m) => ({ default: m.ApprovalsPage })));
 const AuditLogPage = lazy(() => import("@/pages/admin/AuditLogPage").then((m) => ({ default: m.AuditLogPage })));
 const DepartmentsAdmin = lazy(() => import("@/pages/admin/DepartmentsAdmin").then((m) => ({ default: m.DepartmentsAdmin })));
 const EmployeesAdmin = lazy(() => import("@/pages/admin/EmployeesAdmin").then((m) => ({ default: m.EmployeesAdmin })));
@@ -23,7 +22,6 @@ const OrgDashboard = lazy(() => import("@/pages/admin/OrgDashboard").then((m) =>
 const PolicyAdmin = lazy(() => import("@/pages/admin/PolicyAdmin").then((m) => ({ default: m.PolicyAdmin })));
 const SchedulesAdmin = lazy(() => import("@/pages/admin/SchedulesAdmin").then((m) => ({ default: m.SchedulesAdmin })));
 const EmployeeDetailPage = lazy(() => import("@/pages/EmployeeDetailPage").then((m) => ({ default: m.EmployeeDetailPage })));
-const MyRequests = lazy(() => import("@/pages/MyRequests").then((m) => ({ default: m.MyRequests })));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage").then((m) => ({ default: m.ProfilePage })));
 const ReportsPage = lazy(() => import("@/pages/ReportsPage").then((m) => ({ default: m.ReportsPage })));
 const TeamDashboard = lazy(() => import("@/pages/TeamDashboard").then((m) => ({ default: m.TeamDashboard })));
@@ -56,7 +54,6 @@ export function AppRoutes() {
         <Route element={<RequireAuth />}>
           <Route element={<AppLayout />}>
             <Route index element={<MyDashboard />} />
-            <Route path="my/requests" element={<MyRequests />} />
             <Route path="my/wfo" element={<MyWfoPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route element={<RequireAuth roles={["MANAGER", "ADMIN"]} />}>
@@ -64,7 +61,6 @@ export function AppRoutes() {
               <Route path="team/wfo" element={<TeamWfoPage />} />
               <Route path="team/wfo/:id" element={<MemberWfoPage />} />
               <Route path="people/:id" element={<EmployeeDetailPage />} />
-              <Route path="approvals" element={<ApprovalsPage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="admin/managers/:id" element={<ManagerDashboardPage />} />
             </Route>

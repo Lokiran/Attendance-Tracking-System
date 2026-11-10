@@ -17,9 +17,9 @@ type ReportKind = "employee" | "team" | "department" | "monthly" | "exceptions";
 
 const REPORTS: { kind: ReportKind; title: string; description: string; adminOnly?: boolean }[] = [
   { kind: "team", title: "Team attendance", description: "One row per employee: expected, present, absent, worked vs shift hours, variance and attendance %." },
-  { kind: "employee", title: "Employee attendance", description: "Daily records for one employee: status, first check-in, last check-out, net hours, exceptions." },
+  { kind: "employee", title: "Employee attendance", description: "Daily records for one employee from the imported timesheets: status, in / out times, office hours, exceptions." },
   { kind: "monthly", title: "Monthly attendance", description: "Per-employee summary for a calendar month." },
-  { kind: "exceptions", title: "Attendance exceptions", description: "Missing check-outs, late arrivals, short hours and absences." },
+  { kind: "exceptions", title: "Attendance exceptions", description: "Absences, late arrivals and short hours (late and short need times or hours in the timesheet)." },
   { kind: "department", title: "Department attendance", description: "Department-level comparison for the organisation.", adminOnly: true },
 ];
 

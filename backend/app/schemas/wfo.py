@@ -152,6 +152,8 @@ class UploadOut(BaseModel):
     uploaded_by_name: str | None = None
     created_at: datetime
     committed_at: datetime | None
+    period_start: date | None = None   # dates this timesheet covers once committed
+    period_end: date | None = None
 
     model_config = {"from_attributes": True}
 

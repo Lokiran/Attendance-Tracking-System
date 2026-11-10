@@ -230,7 +230,7 @@ export function OrgWfoPage() {
     <div className="space-y-5">
       <PageHeader title="Organisation office days" description="WFO compliance across the organisation, grouped by manager."
         actions={<>
-          <Link to="/admin/attendance-import" className="inline-flex h-9 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3.5 text-sm font-medium text-ink hover:bg-surface-2"><Upload className="size-4" aria-hidden />Import attendance</Link>
+          <Link to="/admin/attendance-import" className="inline-flex h-9 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3.5 text-sm font-medium text-ink hover:bg-surface-2"><Upload className="size-4" aria-hidden />Import timesheets</Link>
           <ExportButton path="/org/wfo/export.xlsx" params={{ month, manager_id: managerId || undefined, department_id: departmentId || undefined }} label="Export Excel" />
         </>} />
       <Card className="flex flex-wrap items-center gap-4 px-4 py-3">

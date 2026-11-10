@@ -71,10 +71,11 @@ def test_logout_revokes_session(client, org, db):
 
 def test_state_changing_request_requires_csrf_token(client, org):
     login(client, org.rahul)
-    r = client.post("/api/attendance/check-in")
+    r = client.post("/api/auth/logout", json={})
     assert r.status_code == 403 and r.json()["error"]["code"] == "csrf_failed"
-    r = client.post("/api/attendance/check-in", headers={"X-CSRF-Token": "forged"})
+    r = client.post("/api/auth/logout", json={}, headers={"X-CSRF-Token": "forged"})
     assert r.status_code == 403
+    assert client.get("/api/auth/me").status_code == 200  # still signed in
 
 
 def test_session_idle_expiry(client, frozen, org):

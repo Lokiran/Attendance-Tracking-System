@@ -1,22 +1,20 @@
-from datetime import date
-from typing import Annotated
+"""Attendance read endpoints. Attendance comes from imported timesheets; there is no check-in / check-out."""
 
+from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Query
 
-from app.api.deps import DB, CurrentUser, Ctx, Paging, Range
-from app.models import DayStatus, SessionStatus
+from app.api.deps import DB, CurrentUser, Paging, Range
+from app.models import AttendanceUpload, DayStatus, User
 from app.schemas.attendance import (
-    CheckInRequest,
-    CheckOutRequest,
     CurrentStatusOut,
     DayDetailOut,
     DayRecordOut,
     DaysPage,
     ScheduleBrief,
-    SessionOut,
     SummaryOut,
+    TimesheetEntryOut,
 )
 from app.schemas.dashboard import TrendsOut
 from app.services import attendance_service, wfo
@@ -26,33 +24,18 @@ from app.services.scope import get_viewable_employee
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
 
-@router.get("/current", response_model=CurrentStatusOut, summary="Today's status and active session")
+@router.get("/current", response_model=CurrentStatusOut, summary="Today, my shift and how far timesheets reach")
 def current(user: CurrentUser, db: DB):
     data = attendance_service.current_status(db, user)
     sched = data["schedule"]
     return CurrentStatusOut(
         server_time=data["server_time"], today=data["today"], office_timezone=data["office_timezone"],
-        today_record=DayRecordOut.of(data["today_record"]) if data["today_record"] else None,
-        active_session=SessionOut.model_validate(data["active_session"]) if data["active_session"] else None,
-        unresolved_session=(SessionOut.model_validate(data["unresolved_session"])
-                            if data["unresolved_session"] else None),
         schedule=ScheduleBrief(name=sched.name, start_time=sched.start_time, end_time=sched.end_time,
                                required_minutes=sched.required_minutes, working_days=sorted(sched.working_days))
         if sched else None,
-        max_session_minutes=data["max_session_minutes"],
+        timesheet_through=data["timesheet_through"], my_timesheet_through=data["my_timesheet_through"],
+        last_import_at=data["last_import_at"],
     )
-
-
-@router.post("/check-in", response_model=SessionOut, status_code=201,
-             summary="Start an attendance session at the current server time")
-def check_in(user: CurrentUser, db: DB, ctx: Ctx, body: Annotated[CheckInRequest | None, Body()] = None):
-    return attendance_service.check_in(db, user, ctx, (body or CheckInRequest()).work_location)
-
-
-@router.post("/check-out", response_model=SessionOut, summary="Close the active session at the current server time")
-def check_out(user: CurrentUser, db: DB, ctx: Ctx,
-              body: Annotated[CheckOutRequest | None, Body()] = None):
-    return attendance_service.check_out(db, user, (body or CheckOutRequest()).break_minutes, ctx)
 
 
 @router.get("/employees/{employee_id}/summary", response_model=SummaryOut)
@@ -84,20 +67,28 @@ def employee_days(employee_id: int, rng: Range, paging: Paging, user: CurrentUse
     if exceptions_only:
         records = [r for r in records if r.exceptions]
     if order == "desc":
-        records.reverse()
+        records = list(reversed(records))
     page = records[paging.offset:paging.offset + paging.page_size]
     return DaysPage(items=[DayRecordOut.of(r) for r in page], total=len(records), page=paging.page,
                     page_size=paging.page_size)
 
 
 @router.get("/employees/{employee_id}/days/{day}", response_model=DayDetailOut,
-            summary="One day's record with its underlying sessions")
+            summary="One day's record and the timesheet entry behind it")
 def employee_day(employee_id: int, day: date, user: CurrentUser, db: DB):
     employee = get_viewable_employee(db, user, employee_id)
     records = attendance_service.records_for(db, employee, day, day)
-    sessions = attendance_service.sessions_on(db, employee.id, day)
-    return DayDetailOut(
-        record=DayRecordOut.of(records[0]) if records else None,
-        sessions=[SessionOut.model_validate(s) for s in sessions if s.status != SessionStatus.VOIDED],
-        voided_sessions=[SessionOut.model_validate(s) for s in sessions if s.status == SessionStatus.VOIDED],
-    )
+    row = attendance_service.timesheet_row(db, employee.id, day)
+    entry = None
+    if row is not None:
+        upload = db.get(AttendanceUpload, row.upload_id) if row.upload_id else None
+        by = db.get(User, row.overridden_by_id) if row.overridden_by_id else None
+        entry = TimesheetEntryOut(
+            work_mode=row.work_mode, wfo_source=row.wfo_source, upload_work_mode=row.upload_work_mode,
+            upload_minutes=row.upload_minutes, badge_minutes=row.badge_minutes, first_in=row.first_in,
+            last_out=row.last_out, upload_filename=upload.filename if upload else None,
+            override_work_mode=row.override_work_mode, override_note=row.override_note,
+            overridden_by_name=by.full_name if by else None, overridden_at=row.overridden_at,
+            conflicts=list(row.conflicts or []),
+        )
+    return DayDetailOut(record=DayRecordOut.of(records[0]) if records else None, timesheet=entry)

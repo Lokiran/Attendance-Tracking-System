@@ -17,6 +17,10 @@ cryptography==50.0.2
 python-multipart==0.0.33
 openpyxl==3.1.5
 et-xmlfile==2.0.0
+# Timesheet imports: PDF tables (text + positions) and Excel 97-2003 (.xls)
+pdfminer.six==20250506
+charset-normalizer==3.5.2
+xlrd==2.0.1
 
 # Testing
 pytest==9.1.1

@@ -1,8 +1,7 @@
 """Attendance / badge file imports for WFO: parse, preview, commit (or discard).
 
-* Files: CSV (UTF-8, `,` `;` or tab) or Excel (.xlsx), at most 5 MB and 20,000 rows. In a workbook the first
-  sheet with an employee and a date column is read (or the sheet chosen); the header may be in any of the
-  first 20 rows, and cells beside the data (a pivot table) are ignored.
+* Files: anything ``app.services.timesheet_files`` reads (CSV / TSV / TXT, Excel .xlsx / .xls, PDF), at most
+  5 MB and 20,000 rows; the sheet / header / PDF-table rules are described there.
 * Headers and text values are matched through ``config/wfo_mapping.json`` (see ``app.core.wfo_mapping``).
   Required columns: employee (code or email) and date. With a work mode or source column each row says what
   the day was; without one the file is a presence list: every listed day is an Office day (or WFH, if
@@ -18,9 +17,8 @@
 
 from __future__ import annotations
 
-import csv
+import calendar
 import hashlib
-import io
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -48,8 +46,16 @@ from app.models import (
 from app.services import audit, wfo
 from app.services.admin_users import user_snapshot
 from app.services.policy import get_policy
+from app.services.timesheet_files import (  # noqa: F401 - read_table / map_header re-exported for callers
+    MAX_UPLOAD_BYTES,
+    Table,
+    cell_text,
+    find_header,
+    map_header,
+    read_table,
+    read_workbook,
+)
 
-MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_ROWS = 20_000
 DATE_FORMATS = ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y", "%d-%b-%Y", "%d %b %Y", "%d-%B-%Y", "%d %B %Y",
                 "%Y/%m/%d")
@@ -57,109 +63,7 @@ TIME_FORMATS = ("%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M:%S %p", "%I %p")
 NOT_WORKING_MODES = (WorkMode.LEAVE, WorkMode.HOLIDAY, WorkMode.WEEKOFF)
 
 
-# ------------------------------------------------------------------ reading files
-
-HEADER_SEARCH_ROWS = 20
-_MONTH_NAME = re.compile(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b|\b\d{4}-\d{2}\b",
-                         re.IGNORECASE)
-
-
-@dataclass
-class Table:
-    rows: list[list]
-    sheets: list[dict] = field(default_factory=list)  # Excel sheets: {"name", "usable", "rows"} (empty for CSV)
-    sheet: str | None = None                           # the sheet that was read
-
-
-def _csv_rows(content: bytes) -> list[list]:
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = content.decode("cp1252", errors="replace")
-    delimiter = max([",", ";", "\t"], key=text[:4096].count)
-    return [row for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
-
-
-def read_workbook(filename: str, content: bytes, sheet: str | None = None) -> Table:
-    """Rows of the chosen sheet. Without ``sheet``, the first sheet whose header has an employee and a date
-    column is used (an attendance workbook often starts with other sheets). Raises ValidationFailed for
-    unsupported or broken files."""
-    name = filename.lower()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise ValidationFailed(f"The file is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
-    if not content:
-        raise ValidationFailed("The file is empty")
-    if name.endswith(".csv"):
-        return Table(_csv_rows(content))
-    if not (name.endswith(".xlsx") or name.endswith(".xlsm")):
-        raise ValidationFailed("Upload a .csv or .xlsx file")
-    from openpyxl import load_workbook
-    try:
-        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-    except Exception:  # noqa: BLE001 - any parse failure is a bad file for the user
-        raise ValidationFailed("This Excel file could not be read") from None
-    try:
-        mapping = get_mapping()
-        names = list(wb.sheetnames)
-        data: dict[str, list[list]] = {}
-        info = []
-        for n in names:
-            rows = [list(r) for r in wb[n].iter_rows(values_only=True)]
-            found = find_header(rows, mapping)
-            data[n] = rows
-            info.append({"name": n, "usable": found is not None,
-                         "rows": sum(1 for r in rows[found[0] + 1:] if any(_cell_text(c) for c in r)) if found else 0})
-    finally:
-        wb.close()
-    if sheet is not None:
-        if sheet not in data:
-            raise ValidationFailed(f"There is no sheet {sheet!r}. Sheets: {', '.join(names)}")
-        chosen = sheet
-    else:
-        # A monthly workbook keeps raw extracts next to the month's sheet ("September 2026"): prefer that one.
-        usable = [i["name"] for i in info if i["usable"]]
-        chosen = next((n for n in usable if _MONTH_NAME.search(n)), usable[0] if usable else names[0])
-    return Table(data[chosen], info, chosen)
-
-
-def read_table(filename: str, content: bytes) -> list[list]:
-    return read_workbook(filename, content).rows
-
-
-def _cell_text(v) -> str:
-    if v is None:
-        return ""
-    if isinstance(v, float) and v.is_integer():
-        return str(int(v))
-    return str(v).strip()
-
-
-def map_header(header: list, mapping) -> dict[str, int]:
-    """Column key -> index. With both an ID column ("Employee ID") and a plain "Employee" column, the plain
-    one holds the names."""
-    candidates: dict[str, list[int]] = defaultdict(list)
-    for i, h in enumerate(header):
-        key = mapping.column(_cell_text(h))
-        if key:
-            candidates[key].append(i)
-    columns = {k: v[0] for k, v in candidates.items()}
-    ids = candidates.get("employee", [])
-    if len(ids) > 1 and "name" not in columns:
-        plain = [i for i in ids if normalize(_cell_text(header[i])) == "employee"]
-        specific = [i for i in ids if i not in plain]
-        if plain and specific:
-            columns["employee"], columns["name"] = specific[0], plain[0]
-    return columns
-
-
-def find_header(rows: list[list], mapping) -> tuple[int, dict[str, int]] | None:
-    """(row index, columns) of the first of the top rows that has an employee and a date column."""
-    for i, row in enumerate(rows[:HEADER_SEARCH_ROWS]):
-        columns = map_header(row, mapping)
-        if "employee" in columns and "date" in columns:
-            return i, columns
-    return None
-
+# ------------------------------------------------------------------ reading values
 
 _NUMERIC_DATE = re.compile(r"^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$")
 
@@ -170,7 +74,7 @@ def parse_date(v) -> date | None:
         return v.date()
     if isinstance(v, date):
         return v
-    text = _cell_text(v)
+    text = cell_text(v)
     for fmt in DATE_FORMATS:
         try:
             return datetime.strptime(text, fmt).date()
@@ -188,7 +92,7 @@ def date_candidates(v) -> list[tuple[date, bool]]:
         if d.day <= 12 and d.day != d.month:
             return [(d, False), (date(d.year, d.day, d.month), True)]
         return [(d, False)]
-    text = _cell_text(v)
+    text = cell_text(v)
     m = _NUMERIC_DATE.match(text)
     if not m:
         d = parse_date(text)
@@ -243,7 +147,7 @@ class DateReader:
 
 def parse_hours(v) -> int | None:
     """Minutes from 7.5 / "7.5" / "7:30" / an Excel time. None if empty; ValueError if invalid."""
-    if v is None or _cell_text(v) == "":
+    if v is None or cell_text(v) == "":
         return None
     if isinstance(v, time):
         return v.hour * 60 + v.minute
@@ -252,7 +156,7 @@ def parse_hours(v) -> int | None:
     elif isinstance(v, (int, float)):
         minutes = round(float(v) * 60)
     else:
-        text = _cell_text(v).lower().replace("hrs", "").replace("h", "").strip()
+        text = cell_text(v).lower().replace("hrs", "").replace("h", "").strip()
         match = re.fullmatch(r"(\d{1,2}):(\d{2})(?::\d{2})?", text)
         minutes = int(match[1]) * 60 + int(match[2]) if match else round(float(text) * 60)
     if not 0 <= minutes <= 24 * 60:
@@ -261,13 +165,13 @@ def parse_hours(v) -> int | None:
 
 
 def parse_time(v) -> time | None:
-    if v is None or _cell_text(v) == "":
+    if v is None or cell_text(v) == "":
         return None
     if isinstance(v, datetime):
         return v.time()
     if isinstance(v, time):
         return v
-    text = _cell_text(v).upper()
+    text = cell_text(v).upper()
     for fmt in TIME_FORMATS:
         try:
             return datetime.strptime(text, fmt).time()
@@ -325,9 +229,9 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
     mapping = get_mapping()
     found = find_header(table, mapping)
     if found is None:
-        first = next((r for r in table if any(_cell_text(c) for c in r)), [])
+        first = next((r for r in table if any(cell_text(c) for c in r)), [])
         raise ValidationFailed("Could not find an employee and a date column in the first rows. Found: "
-                               f"{', '.join(_cell_text(h) for h in first if _cell_text(h)) or 'nothing'}")
+                               f"{', '.join(cell_text(h) for h in first if cell_text(h)) or 'nothing'}")
     header_at, columns = found
     header = table[header_at]
     body = table[header_at + 1:]
@@ -354,13 +258,13 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
     out: list[Parsed] = []
     blank = 0
     for n, r in enumerate(body, start=header_at + 2):
-        ref_text, date_value = _cell_text(cell(r, "employee")), cell(r, "date")
-        if not ref_text and not _cell_text(date_value):
+        ref_text, date_value = cell_text(cell(r, "employee")), cell(r, "date")
+        if not ref_text and not cell_text(date_value):
             blank += 1  # empty row, or only cells outside the columns we read (e.g. a pivot table beside the data)
             continue
         ref_text = " ".join(ref_text.split())
         p = Parsed(row_number=n, employee_ref=ref_text[:255] or None,
-                   employee_name=" ".join(_cell_text(cell(r, "name")).split())[:120] or None)
+                   employee_name=" ".join(cell_text(cell(r, "name")).split())[:120] or None)
         try:
             p.work_date = dates.read(date_value)
             ref = ref_key(ref_text)
@@ -383,8 +287,8 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
                     mismatches[p.employee_ref] = {"employee_ref": p.employee_ref, "file_name": p.employee_name,
                                                   "app_name": app_name}
             if p.work_date is None:
-                raise ValueError(f"date {_cell_text(date_value)!r} is not a date (use 31/03/2026 or 2026-03-31)")
-            p.raw_work_mode = _cell_text(cell(r, "work_mode"))[:64] or None
+                raise ValueError(f"date {cell_text(date_value)!r} is not a date (use 31/03/2026 or 2026-03-31)")
+            p.raw_work_mode = cell_text(cell(r, "work_mode"))[:64] or None
             if p.raw_work_mode:
                 p.work_mode = mapping.work_mode(p.raw_work_mode)
                 if p.work_mode is None:
@@ -392,7 +296,7 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
                                      "config/wfo_mapping.json)")
             elif presence_list:
                 p.work_mode = presence_mode
-            p.raw_source = _cell_text(cell(r, "source"))[:64] or None
+            p.raw_source = cell_text(cell(r, "source"))[:64] or None
             p.is_badge = mapping.is_badge(p.raw_source)
             p.minutes = parse_hours(cell(r, "hours"))
             t_in, t_out = parse_time(cell(r, "in_time")), parse_time(cell(r, "out_time"))
@@ -415,7 +319,7 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
         except ValueError as exc:
             p.error = str(exc)[:255]
         out.append(p)
-    return ParseResult(out, {k: _cell_text(header[i]) for k, i in columns.items()}, presence_list, unknown,
+    return ParseResult(out, {k: cell_text(header[i]) for k, i in columns.items()}, presence_list, unknown,
                        list(mismatches.values()), dates, blank)
 
 
@@ -686,6 +590,16 @@ def _summary(db: Session, rows, columns: dict[str, str], overwrite: bool) -> dic
     }
 
 
+def timesheet_period(date_from: date, date_to: date, committed: date) -> tuple[date, date]:
+    """Dates a committed timesheet covers: from the 1st of the month of its first date to the end of the month
+    of its last date, but not beyond the day before it was committed (a November sheet imported on the 10th
+    covers 1-9 November). A scheduled day in the period that is not in the file is absent."""
+    start = date_from.replace(day=1)
+    month_end = date_to.replace(day=calendar.monthrange(date_to.year, date_to.month)[1])
+    end = max(min(month_end, committed - timedelta(days=1)), date_to)
+    return start, max(end, start)
+
+
 def _get(db: Session, upload_id: int) -> AttendanceUpload:
     upload = db.get(AttendanceUpload, upload_id)
     if upload is None:
@@ -743,8 +657,13 @@ def commit(db: Session, admin: User, upload_id: int, overwrite_overrides: bool, 
     upload.committed_by_id = admin.id
     upload.committed_at = now
     upload.overwrite_overrides = overwrite_overrides
+    if updates:
+        upload.period_start, upload.period_end = timesheet_period(
+            min(k[1] for k in updates), max(k[1] for k in updates), local_date(now, office_tz()))
     upload.commit_summary = {"applied_days": applied, "created_days": created, "skipped_overrides": skipped,
-                             "overrides_overwritten": overwritten, "error_rows": upload.error_count}
+                             "overrides_overwritten": overwritten, "error_rows": upload.error_count,
+                             "period_start": upload.period_start.isoformat() if upload.period_start else None,
+                             "period_end": upload.period_end.isoformat() if upload.period_end else None}
     audit.record(db, actor_id=admin.id, action="ATTENDANCE_UPLOAD_COMMITTED", entity_type="attendance_upload",
                  entity_id=upload.id, after={"filename": upload.filename, **upload.commit_summary}, ctx=ctx)
     db.commit()

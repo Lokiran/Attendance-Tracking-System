@@ -70,6 +70,8 @@
   --st-holiday: #6250d6;
   --st-off: #cbd5e1;
   --st-pending: #94a3b8;
+  --st-wfh: #0891b2;       /* validated vs present / absent / leave and the WFO office blue */
+  --st-leave: #eda100;
 }
 
 /* Explicit dark theme (selected with the theme button) */
@@ -113,6 +115,8 @@
   --st-holiday: #9085e9;
   --st-off: #475569;
   --st-pending: #64748b;
+  --st-wfh: #13a59a;       /* validated vs present / absent / leave and the WFO office blue */
+  --st-leave: #c98500;
 }
 
 /* "System" theme: follow the OS only when no explicit theme is chosen */
@@ -157,6 +161,8 @@
     --st-holiday: #9085e9;
     --st-off: #475569;
     --st-pending: #64748b;
+    --st-wfh: #13a59a;       /* validated vs present / absent / leave and the WFO office blue */
+    --st-leave: #c98500;
   }
 }
 

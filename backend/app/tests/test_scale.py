@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import event, insert, text
 
 from app.db.session import engine
-from app.models import AttendanceSession, Role, SessionSource, SessionStatus, User
+from app.models import AttendanceDaily, DailyStatus, Role, User, WorkMode
 from app.services import attendance_data, record_cache
 from app.tests.conftest import login
 
@@ -31,7 +31,8 @@ DASHBOARD_CALLS = [
 
 
 def build_org(factory, db, employees: int, managers: int = 3):
-    """1 admin, `managers` managers, `employees` employees with a week of sessions each."""
+    """1 admin, `managers` managers, `employees` employees with a week of imported timesheet days each
+    (a committed timesheet covers 2-9 March)."""
     factory.default_schedule()
     dept = factory.department("Operations")
     admin = factory.user("Admin User", Role.ADMIN)
@@ -46,16 +47,22 @@ def build_org(factory, db, employees: int, managers: int = 3):
     ])
     ids = [i for (i,) in db.execute(text("SELECT id FROM users WHERE role = 'EMPLOYEE'"))]
     rows = []
-    for k, uid in enumerate(ids):
+    for uid in ids:
         for day in range(2, 10):  # Mon 2 .. Mon 9 March 2026 (weekend skipped below)
             d = datetime(2026, 3, day, 4, 0, tzinfo=UTC) + timedelta(minutes=(uid * 7 + day) % 50)
             if d.isoweekday() > 5 or (uid + day) % 9 == 0:
                 continue
-            rows.append(dict(employee_id=uid, check_in_at=d, check_out_at=d + timedelta(hours=9), break_minutes=45,
-                             net_minutes=9 * 60 - 45, status=SessionStatus.COMPLETED, source=SessionSource.SEED))
-    db.execute(insert(AttendanceSession), rows)
+            rows.append(daily(uid, d.date(), d, 9 * 60 - 45))
+    db.execute(insert(AttendanceDaily), rows)
     db.commit()
+    factory.cover(date(2026, 3, 2), date(2026, 3, 9), ids + [m.id for m in mgrs])
     return admin, mgrs
+
+
+def daily(uid: int, d: date, first_in: datetime | None, minutes: int | None) -> dict:
+    return dict(employee_id=uid, work_date=d, office_minutes=0, wfh_minutes=0, status=DailyStatus.PRESENT,
+                corrected=False, conflicts=[], upload_work_mode=WorkMode.OFFICE, upload_minutes=minutes,
+                first_in=first_in)
 
 
 def _dashboard_json(client) -> list:
@@ -116,31 +123,30 @@ def test_cached_results_equal_fresh_results(client, factory, db, monkeypatch):
     assert fresh == first == second
 
 
-def test_check_in_shows_up_immediately(client, factory, db, frozen):
+def test_imported_day_shows_up_immediately(client, factory, db, frozen):
     admin, _ = build_org(factory, db, 30)
     staff = db.query(User).filter(User.email == "staff1@scale.example").one()
     login(client, admin)
     before = client.get("/api/dashboard/overview", params=RANGE).json()["snapshot"]
     # same minute, frozen clock: only the in-process write version can tell the data changed
-    db.add(AttendanceSession(employee_id=staff.id, check_in_at=frozen.now - timedelta(minutes=5),
-                             status=SessionStatus.OPEN, source=SessionSource.WEB, break_minutes=0))
+    db.add(AttendanceDaily(**daily(staff.id, date(2026, 3, 10), None, None)))
     db.commit()
     after = client.get("/api/dashboard/overview", params=RANGE).json()["snapshot"]
-    assert after["checked_in_now"] == before["checked_in_now"] + 1
     assert after["present"] == before["present"] + 1
+    assert after["no_timesheet"] == before["no_timesheet"] - 1
 
 
 def test_update_with_unchanged_timestamp_shows_up(client, factory, db, frozen):
-    """Frozen clock: an ORM update keeps the same updated_at, count and max id, so the sessions
+    """Frozen clock: an ORM update keeps the same updated_at, count and max id, so the timesheet
     fingerprint cannot see it; the in-process write version must."""
     admin, _ = build_org(factory, db, 30)
     login(client, admin)
-    s = db.query(AttendanceSession).order_by(AttendanceSession.id).first()
+    s = db.query(AttendanceDaily).order_by(AttendanceDaily.id).first()
     s.updated_at = frozen.now  # make sure the fingerprint really cannot tell
     db.commit()
     record_cache.clear()
     before = client.get("/api/dashboard/overview", params=RANGE).json()["period"]["net_minutes"]
-    s.net_minutes += 30
+    s.upload_minutes += 30
     db.commit()
     assert s.updated_at == frozen.now
     after = client.get("/api/dashboard/overview", params=RANGE).json()["period"]["net_minutes"]
@@ -149,14 +155,14 @@ def test_update_with_unchanged_timestamp_shows_up(client, factory, db, frozen):
 
 def test_write_from_another_process_is_picked_up(client, factory, db):
     """A raw UPDATE (as another server process would do) bypasses this process's write tracking;
-    the sessions fingerprint (updated_at) must still invalidate the cached result."""
+    the timesheet fingerprint (updated_at) must still invalidate the cached result."""
     admin, _ = build_org(factory, db, 30)
     login(client, admin)
     before = client.get("/api/dashboard/overview", params=RANGE).json()["period"]["net_minutes"]
     version = record_cache.write_version()
     with engine.begin() as conn:
-        conn.execute(text("UPDATE attendance_sessions SET net_minutes = net_minutes + 60, updated_at = :t "
-                          "WHERE id = (SELECT min(id) FROM attendance_sessions)"),
+        conn.execute(text("UPDATE attendance_daily SET upload_minutes = upload_minutes + 60, updated_at = :t "
+                          "WHERE id = (SELECT min(id) FROM attendance_daily)"),
                      {"t": datetime(2030, 1, 1, tzinfo=UTC)})
     assert record_cache.write_version() == version  # this process did not notice the write...
     after = client.get("/api/dashboard/overview", params=RANGE).json()["period"]["net_minutes"]

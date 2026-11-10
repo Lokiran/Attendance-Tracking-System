@@ -83,6 +83,9 @@ def test_employee_export_restricted_to_self(client, org):
     assert denied.status_code == 404
 
 
-def test_employee_cannot_list_others_requests(client, org):
-    login(client, org.rahul)
-    assert client.get("/api/corrections", params={"scope": "review"}).status_code == 403
+def test_only_the_admin_imports_timesheets(client, org):
+    files = {"file": ("t.csv", b"Employee ID,Date\nE001,01/10/2026\n", "text/csv")}
+    for person in (org.rahul, org.priya):
+        h = login(client, person)
+        assert client.post("/api/admin/attendance-uploads", headers=h, files=files).status_code == 403
+        assert client.get("/api/admin/attendance-uploads").status_code == 403

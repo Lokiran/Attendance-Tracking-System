@@ -1,27 +1,26 @@
-import type { CurrentStatus, DayRecord, EmployeeRow, Overview, Summary, Trends } from "@/lib/types";
-
-import { emptyPage } from "./utils";
+import type { CurrentStatus, DayRecord, EmployeeRow, Overview, PeriodStats, Summary, Trends } from "@/lib/types";
 
 export const summary: Summary = {
   start: "2026-10-01",
   end: "2026-10-27",
   expected_days: 18,
-  present_days: 16,
-  present_expected_days: 16,
+  present_days: 14,
+  present_expected_days: 14,
   extra_present_days: 0,
   absent_days: 1,
+  wfh_days: 3,
+  leave_days: 1,
   holiday_days: 0,
   weekend_days: 7,
   not_scheduled_days: 0,
-  incomplete_days: 1,
-  not_yet_checked_in_days: 0,
-  net_minutes: 7800,
+  no_timesheet_days: 0,
+  net_minutes: 6720,
   required_minutes: 8640,
-  variance_minutes: -840,
-  average_net_minutes: 487,
-  attendance_percentage: 88.9,
-  attended_days_for_average: 16,
-  unresolved_sessions: 1,
+  hours_days: 14,
+  hours_required_minutes: 6720,
+  variance_minutes: 0,
+  average_net_minutes: 480,
+  attendance_percentage: 77.8,
   late_days: 2,
 };
 
@@ -33,65 +32,64 @@ export function day(date: string, overrides: Partial<DayRecord> = {}): DayRecord
     scheduled_workday: true,
     required_minutes: 480,
     net_minutes: 495,
-    session_count: 1,
-    completed_sessions: 1,
-    first_check_in: date + "T04:05:00Z",
-    last_check_out: date + "T13:30:00Z",
-    has_active_session: false,
-    unresolved_sessions: 0,
+    hours_known: true,
+    work_mode: "OFFICE",
+    first_in: date + "T04:05:00Z",
+    last_out: date + "T13:30:00Z",
     holiday_name: null,
     exceptions: [],
     ...overrides,
   };
 }
 
-export function current(active: boolean): CurrentStatus {
+export function current(through: string | null = "2026-09-30"): CurrentStatus {
   return {
     server_time: "2026-10-27T06:30:00Z",
     today: "2026-10-27",
     office_timezone: "Asia/Kolkata",
-    today_record: day("2026-10-27", active ? { has_active_session: true, net_minutes: 0 } : { status: "NOT_YET_CHECKED_IN", expected: false, net_minutes: 0, first_check_in: null, last_check_out: null }),
-    active_session: active
-      ? { id: 99, employee_id: 5, check_in_at: "2026-10-27T04:00:00Z", check_out_at: null, break_minutes: 0, net_minutes: null, status: "OPEN", source: "WEB", notes: null, voided_at: null, void_reason: null }
-      : null,
-    unresolved_session: null,
     schedule: { name: "General shift", start_time: "09:30:00", end_time: "18:30:00", required_minutes: 480, working_days: [1, 2, 3, 4, 5] },
-    max_session_minutes: 960,
+    timesheet_through: through,
+    my_timesheet_through: through,
+    last_import_at: through ? "2026-10-05T06:00:00Z" : null,
   };
 }
 
 export const trends: Trends = { granularity: "month", headcount: 1, items: [] };
 
 /** Routes shared by every page that renders the employee dashboard. */
-export function employeeRoutes(active = false) {
+export function employeeRoutes() {
   return {
-    "/attendance/current": current(active),
+    "/attendance/current": current(),
     "/attendance/employees/5/summary": summary,
     "/attendance/employees/5/days": (url: URL) => ({
-      items: [day("2026-10-26"), day("2026-10-23", { status: "ABSENT", net_minutes: 0, exceptions: ["ABSENT"], first_check_in: null, last_check_out: null })],
+      items: [
+        day("2026-10-26"),
+        day("2026-10-23", { status: "ABSENT", net_minutes: 0, hours_known: false, work_mode: null, exceptions: ["ABSENT"], first_in: null, last_out: null }),
+      ],
       total: 2,
       page: Number(url.searchParams.get("page") ?? 1),
       page_size: 10,
     }),
     "/attendance/employees/5/trends": trends,
-    "/corrections": emptyPage,
   };
 }
 
-export const period = {
+export const period: PeriodStats = {
   expected_days: 40,
-  present_expected_days: 36,
-  present_days: 36,
+  present_expected_days: 34,
+  present_days: 34,
   absent_days: 2,
-  incomplete_days: 1,
+  wfh_days: 4,
+  leave_days: 1,
+  no_timesheet_days: 0,
   late_days: 3,
-  unresolved_sessions: 1,
-  net_minutes: 17000,
+  net_minutes: 16048,
   required_minutes: 19200,
-  variance_minutes: -2200,
-  attended_days_for_average: 36,
+  hours_days: 34,
+  hours_required_minutes: 16320,
+  variance_minutes: -272,
   average_net_minutes: 472,
-  attendance_percentage: 90,
+  attendance_percentage: 85,
 };
 
 export const overview: Overview = {
@@ -100,7 +98,7 @@ export const overview: Overview = {
   start: "2026-10-01",
   end: "2026-10-27",
   headcount: 3,
-  snapshot: { present: 2, absent: 0, not_checked_in: 1, incomplete: 0, off: 0, checked_in_now: 1 },
+  snapshot: { present: 2, wfh: 0, absent: 0, leave: 0, no_timesheet: 1, off: 0 },
   period,
   attendance_bands: [
     { label: "<70%", count: 0 },
@@ -109,7 +107,7 @@ export const overview: Overview = {
     { label: "90–95%", count: 1 },
     { label: "95–100%", count: 1 },
   ],
-  pending_corrections: 1,
+  timesheet_through: "2026-09-30",
 };
 
 export function row(id: number, name: string, overrides: Partial<EmployeeRow> = {}): EmployeeRow {
@@ -124,7 +122,7 @@ export function row(id: number, name: string, overrides: Partial<EmployeeRow> = 
     department_name: "AI Engineering",
     manager_id: 3,
     manager_name: "Priya Sharma",
-    day: { status: "PRESENT", first_check_in: "2026-10-27T04:00:00Z", last_check_out: null, net_minutes: 0, has_active_session: true, exceptions: [] },
+    day: { status: "PRESENT", first_in: "2026-10-27T04:00:00Z", last_out: "2026-10-27T12:30:00Z", net_minutes: 510, hours_known: true, work_mode: "OFFICE", exceptions: [] },
     period,
     exception_count: 0,
     ...overrides,

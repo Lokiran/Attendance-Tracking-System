@@ -1,32 +1,41 @@
 """Loads attendance inputs from the database in bulk and feeds them to the pure rules engine.
 
+Attendance comes from the imported timesheets: each ``attendance_daily`` row holds what the timesheets
+(and Admin overrides) say about an employee-day; :func:`timesheet_day` turns it into the work mode and
+office hours with the same priority rules as WFO (``wfo_rules.classify_day``). A committed upload covers its
+period **for the people listed in it** (:func:`coverage`): a partial file (one team, one correction) never
+makes anyone else absent.
+
 Scale notes (1 admin, a few managers, thousands of employees):
 
-* Sessions are read as plain column rows, not ORM objects, and large scopes are read with one
+* Timesheet rows are read as plain column rows, not ORM objects, and large scopes are read with one
   range query instead of thousands of ``IN`` parameters.
 * A dashboard page sends several requests (cards, table, charts) for the same scope and dates.
   :func:`compute_records` computes the day records once and lets the other requests reuse them
   through :mod:`app.services.record_cache`. The cache key contains everything the result depends
-  on (people, dates, the minute, schedules, holidays, policy and a fingerprint of the sessions in
+  on (people, dates, schedules, holidays, policy, coverage and a fingerprint of the timesheet rows in
   range), so any write is visible on the next request, from any server process.
 """
 
+import bisect
 import gc
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core import clock
-from app.core.timeutil import local_date, local_day_bounds, office_tz
+from app.core.timeutil import local_date, office_tz
 from app.models import (
-    AttendanceSession,
+    AttendanceDaily,
+    AttendanceUpload,
+    AttendanceUploadRow,
     Holiday,
-    SessionStatus,
+    UploadStatus,
     User,
+    WorkMode,
     WorkSchedule,
 )
 from app.services import record_cache
@@ -36,23 +45,17 @@ from app.services.attendance_rules import (
     HolidayData,
     PolicyData,
     ScheduleData,
-    SessionData,
+    TimesheetDay,
     build_day_records,
 )
 from app.services.policy import get_policy, policy_data
+from app.services.wfo_rules import DayEvidence, classify_day
 
 _CHUNK = 500
 # Above this many people one range query (filtered in Python) beats many IN (...) chunks.
 _RANGE_SCAN_MIN = 2000
 # Scopes smaller than this are cheap to compute and are not cached.
 CACHE_MIN_EMPLOYEES = 25
-
-
-def session_data(s: AttendanceSession) -> SessionData:
-    return SessionData(
-        id=s.id, employee_id=s.employee_id, check_in_at=s.check_in_at, check_out_at=s.check_out_at,
-        break_minutes=s.break_minutes, net_minutes=s.net_minutes, status=SessionStatus(s.status),
-    )
 
 
 def schedule_data(s: WorkSchedule) -> ScheduleData:
@@ -67,39 +70,112 @@ def employee_data(u: User) -> EmployeeData:
     return EmployeeData(id=u.id, department_id=u.department_id, date_joined=u.date_joined)
 
 
-@dataclass
-class Bundle:
-    sessions: dict[int, list[SessionData]]
-    schedules: list[ScheduleData]
-    holidays: list[HolidayData]
-    policy: PolicyData
-
-
-_SESSION_COLUMNS = (
-    AttendanceSession.id, AttendanceSession.employee_id, AttendanceSession.check_in_at,
-    AttendanceSession.check_out_at, AttendanceSession.break_minutes, AttendanceSession.net_minutes,
-    AttendanceSession.status,
+_DAILY_COLUMNS = (
+    AttendanceDaily.employee_id, AttendanceDaily.work_date, AttendanceDaily.override_work_mode,
+    AttendanceDaily.upload_work_mode, AttendanceDaily.upload_minutes, AttendanceDaily.badge_minutes,
+    AttendanceDaily.wifi_minutes, AttendanceDaily.first_in, AttendanceDaily.last_out,
 )
 
 
-def _load_sessions(db: Session, employee_ids: list[int], start: date, end: date) -> dict[int, list[SessionData]]:
-    lo, hi = local_day_bounds(start, end)
-    in_range = (AttendanceSession.check_in_at >= lo, AttendanceSession.check_in_at < hi,
-                AttendanceSession.status != SessionStatus.VOIDED)
-    sessions: dict[int, list[SessionData]] = defaultdict(list)
+def timesheet_day(eid: int, d: date, override, upload_mode, upload_minutes, badge_minutes, wifi_minutes,
+                  first_in: datetime | None, last_out: datetime | None) -> TimesheetDay | None:
+    """The work mode and office hours one attendance_daily row stands for (None: it says nothing)."""
+    if last_out is not None and (first_in is None or last_out < first_in):
+        last_out = None
+    if override is None and badge_minutes is None and not wifi_minutes:
+        # Fast path for the usual row (only the timesheet's own columns), identical to classify_day:
+        # an OFFICE row's hours are its hours column; other modes carry no office hours; hours without a
+        # mode mean WFH (INFERRED).
+        if upload_mode is not None:
+            mode = WorkMode(upload_mode)
+            return TimesheetDay(eid, d, mode, upload_minutes if mode == WorkMode.OFFICE else None, first_in, last_out)
+        if upload_minutes:
+            return TimesheetDay(eid, d, WorkMode.WFH, None, first_in, last_out)
+        return None
+    cls = classify_day(DayEvidence(override=override, upload_mode=upload_mode, upload_minutes=upload_minutes,
+                                   badge_minutes=badge_minutes, wifi_minutes=wifi_minutes))
+    if cls.work_mode is None:
+        return None
+    minutes = cls.office_minutes if cls.work_mode == WorkMode.OFFICE and cls.hours_known else None
+    return TimesheetDay(eid, d, cls.work_mode, minutes, first_in, last_out)
+
+
+def load_timesheet(db: Session, employee_ids: list[int], start: date, end: date) -> dict[int, list[TimesheetDay]]:
+    in_range = (AttendanceDaily.work_date >= start, AttendanceDaily.work_date <= end)
+    out: dict[int, list[TimesheetDay]] = defaultdict(list)
     if len(employee_ids) >= _RANGE_SCAN_MIN:
         wanted = set(employee_ids)
-        queries = [select(*_SESSION_COLUMNS).where(*in_range)]
+        queries = [select(*_DAILY_COLUMNS).where(*in_range)]
     else:
         wanted = None
-        queries = [select(*_SESSION_COLUMNS).where(AttendanceSession.employee_id.in_(employee_ids[i:i + _CHUNK]),
-                                                   *in_range)
+        queries = [select(*_DAILY_COLUMNS).where(AttendanceDaily.employee_id.in_(employee_ids[i:i + _CHUNK]),
+                                                 *in_range)
+                   for i in range(0, len(employee_ids), _CHUNK)]
+    conn = db.connection()  # Core rows: no ORM loading overhead for hundreds of thousands of rows
+    for q in queries:
+        for row in conn.execute(q):
+            if wanted is None or row[0] in wanted:
+                t = timesheet_day(*row)
+                if t is not None:
+                    out[row[0]].append(t)
+    return out
+
+
+Periods = tuple[tuple[date, date], ...]
+
+
+def _merge(periods) -> Periods:
+    merged: list[tuple[date, date]] = []
+    for a, b in sorted(periods):
+        if merged and (a - merged[-1][1]).days <= 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return tuple(merged)
+
+
+_COMMITTED = (AttendanceUpload.status == UploadStatus.COMMITTED, AttendanceUpload.period_start.is_not(None),
+              AttendanceUpload.period_end.is_not(None))
+
+
+def coverage(db: Session, employee_ids: list[int]) -> dict[int, Periods]:
+    """Per employee, the merged periods of the committed timesheets that list them (valid rows only)."""
+    found: dict[int, set[tuple[date, date]]] = defaultdict(set)
+    base = (select(AttendanceUploadRow.employee_id, AttendanceUpload.period_start, AttendanceUpload.period_end)
+            .join(AttendanceUpload, AttendanceUpload.id == AttendanceUploadRow.upload_id)
+            .where(*_COMMITTED, AttendanceUploadRow.error.is_(None), AttendanceUploadRow.employee_id.is_not(None))
+            .distinct())
+    if len(employee_ids) >= _RANGE_SCAN_MIN:
+        wanted = set(employee_ids)
+        queries = [base]
+    else:
+        wanted = None
+        queries = [base.where(AttendanceUploadRow.employee_id.in_(employee_ids[i:i + _CHUNK]))
                    for i in range(0, len(employee_ids), _CHUNK)]
     for q in queries:
-        for sid, eid, cin, cout, brk, net, status in db.execute(q):
+        for eid, a, b in db.execute(q):
             if wanted is None or eid in wanted:
-                sessions[eid].append(SessionData(sid, eid, cin, cout, brk, net, SessionStatus(status)))
-    return sessions
+                found[eid].add((a, b))
+    return {eid: _merge(periods) for eid, periods in found.items()}
+
+
+def covered_fn(periods: Periods):
+    starts = [a for a, _b in periods]
+
+    def covered(d: date) -> bool:
+        i = bisect.bisect_right(starts, d) - 1
+        return i >= 0 and d <= periods[i][1]
+    return covered
+
+
+def latest_import_through(db: Session) -> date | None:
+    """The last date any committed timesheet covers (for "timesheets imported up to")."""
+    return db.scalar(select(func.max(AttendanceUpload.period_end)).where(*_COMMITTED))
+
+
+def _coverage_fingerprint(db: Session) -> tuple:
+    return tuple(db.execute(select(func.count(), func.max(AttendanceUpload.id), func.max(AttendanceUpload.committed_at))
+                            .where(*_COMMITTED)).one())
 
 
 def _load_rules_inputs(db: Session, start: date, end: date) -> tuple[list[ScheduleData], list[HolidayData], PolicyData]:
@@ -119,26 +195,12 @@ def _load_rules_inputs(db: Session, start: date, end: date) -> tuple[list[Schedu
     return schedules, holidays, policy_data(get_policy(db))
 
 
-def load_bundle(db: Session, employee_ids: list[int], start: date, end: date) -> Bundle:
-    schedules, holidays, policy = _load_rules_inputs(db, start, end)
-    return Bundle(_load_sessions(db, employee_ids, start, end), schedules, holidays, policy)
-
-
-def _sessions_fingerprint(db: Session, start: date, end: date) -> tuple:
-    """Changes whenever a session in the range is added, changed, voided or removed."""
-    lo, hi = local_day_bounds(start, end)
-    count, newest_change, max_id = db.execute(
-        select(func.count(), func.max(AttendanceSession.updated_at), func.max(AttendanceSession.id))
-        .where(AttendanceSession.check_in_at >= lo, AttendanceSession.check_in_at < hi)
-    ).one()
-    return count, newest_change, max_id
-
-
-CLOCK_BUCKET_MINUTES = 5
-
-
-def _clock_bucket(now: datetime) -> datetime:
-    return now.replace(minute=now.minute - now.minute % CLOCK_BUCKET_MINUTES, second=0, microsecond=0)
+def _timesheet_fingerprint(db: Session, start: date, end: date) -> tuple:
+    """Changes whenever a timesheet row in the range is added, changed or removed."""
+    return tuple(db.execute(
+        select(func.count(), func.max(AttendanceDaily.updated_at), func.max(AttendanceDaily.id))
+        .where(AttendanceDaily.work_date >= start, AttendanceDaily.work_date <= end)
+    ).one())
 
 
 @contextmanager
@@ -158,32 +220,27 @@ def _gc_paused():
 
 def compute_records(db: Session, employees: list[User], start: date, end: date) -> dict[int, list[DayRecord]]:
     """Day records per employee for the range (clipped to today). Callers must not modify them."""
-    now = clock.utcnow()
     tz = office_tz()
-    today = local_date(now, tz)
+    today = local_date(clock.utcnow(), tz)
     schedules, holidays, policy = _load_rules_inputs(db, start, end)
     people = [employee_data(e) for e in employees]
 
     def compute() -> dict[int, list[DayRecord]]:
-        sessions = _load_sessions(db, [p.id for p in people], start, end)
+        ids = [p.id for p in people]
+        timesheet = load_timesheet(db, ids, start, end)
+        periods = coverage(db, ids)
         shared: dict = {}  # schedule / shift-start memo reused across everyone in this computation
         with _gc_paused():
             return {
-                p.id: build_day_records(p, start, end, today=today, now=now, tz=tz, sessions=sessions.get(p.id, ()),
-                                        schedules=schedules, holidays=holidays, policy=policy, shared=shared)
+                p.id: build_day_records(p, start, end, today=today, tz=tz, timesheet=timesheet.get(p.id, ()),
+                                        schedules=schedules, holidays=holidays, policy=policy,
+                                        covered=covered_fn(periods.get(p.id, ())), shared=shared)
                 for p in people
             }
 
     if len(people) < CACHE_MIN_EMPLOYEES:
         return compute()
-    key = (
-        tuple(people), start, end, today,
-        # Without any write, results change with the clock only when a running session passes the
-        # maximum session length (it becomes "missing check-out"), and only for ranges reaching
-        # today or yesterday. Re-checking that every few minutes is plenty; writes are seen at once.
-        _clock_bucket(now) if end >= today - timedelta(days=1) else None,
-        tuple(schedules), tuple(holidays),
-        policy, _sessions_fingerprint(db, start, end), record_cache.write_version(),
-    )
+    key = (tuple(people), start, end, today, tuple(schedules), tuple(holidays), policy, _coverage_fingerprint(db),
+           _timesheet_fingerprint(db, start, end), record_cache.write_version())
     size = len(people) * ((min(end, today) - start).days + 1)
     return record_cache.get_or_compute(key, size, compute)

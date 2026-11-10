@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.routes import admin, attendance, auth, auto_attendance, dashboard, health, reports, requests, wfo
+from app.api.routes import admin, attendance, auth, auto_attendance, dashboard, health, reports, wfo
 from app.core.config import describe_database, get_settings, selected_env_file
 from app.core.errors import AppError, TooManyRequests
 
@@ -109,7 +109,7 @@ def create_app() -> FastAPI:
         logger.exception("unhandled error request_id=%s", getattr(request.state, "request_id", None))
         return _error(500, "internal_error", "An unexpected error occurred.", request)
 
-    for module in (health, auth, attendance, requests, dashboard, admin, reports, auto_attendance, wfo):
+    for module in (health, auth, attendance, dashboard, admin, reports, auto_attendance, wfo):
         app.include_router(module.router, prefix="/api")
     return app
 

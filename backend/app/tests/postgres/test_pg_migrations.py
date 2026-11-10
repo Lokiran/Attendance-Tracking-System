@@ -21,7 +21,7 @@ def _scalar(sql: str, **params):
 
 
 def test_upgrade_installs_extension_and_postgres_constraints(migrated):
-    assert current_revision(engine) == "0004"
+    assert current_revision(engine) == "0005"
     assert app_tables() <= set(inspect(engine).get_table_names())
     assert _scalar("SELECT extname FROM pg_extension WHERE extname = 'btree_gist'") == "btree_gist"
 
@@ -51,7 +51,7 @@ def test_downgrade_then_reupgrade(migrated):
     assert _scalar("SELECT count(*) FROM pg_constraint WHERE conname = 'ex_attendance_no_overlap'") == 0
 
     upgrade()
-    assert current_revision(engine) == "0004"
+    assert current_revision(engine) == "0005"
     assert _scalar("SELECT count(*) FROM pg_constraint WHERE conname = 'ex_attendance_no_overlap'") == 1
 
 
@@ -116,7 +116,7 @@ def test_migrated_check_constraints(employee_id):
 
 
 def test_0002_widens_source_check_in_place_and_keeps_exclusion_constraint(migrated):
-    assert current_revision(engine) == "0004"
+    assert current_revision(engine) == "0005"
     definition = _scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint "
                          "WHERE conname = 'ck_attendance_sessions_session_source'")
     assert "AUTO_WIFI" in definition and "AUTO_TEAMS" in definition and "SEED" in definition
@@ -133,7 +133,7 @@ def test_0002_downgrade_to_0001_and_back(employee_id):
     assert "AUTO_WIFI" not in definition
     assert "signals" not in inspect(engine).get_table_names()
     upgrade()
-    assert current_revision(engine) == "0004"
+    assert current_revision(engine) == "0005"
 
 
 def test_0002_auto_session_respects_exclusion_constraint(employee_id):
@@ -147,7 +147,7 @@ def test_0002_auto_session_respects_exclusion_constraint(employee_id):
 
 
 def test_0003_settings_defaults_checks_and_round_trip(migrated):
-    assert current_revision(engine) == "0004"
+    assert current_revision(engine) == "0005"
     assert set(inspect(engine).get_table_names()) >= {"wifi_events", "presence_events", "attendance_daily",
                                                       "attendance_daily_corrections"}
     assert "signals" not in inspect(engine).get_table_names()
@@ -165,4 +165,4 @@ def test_0003_settings_defaults_checks_and_round_trip(migrated):
     downgrade("0002")
     assert "signals" in inspect(engine).get_table_names()
     upgrade()
-    assert current_revision(engine) == "0004"
+    assert current_revision(engine) == "0005"

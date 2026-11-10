@@ -11,7 +11,7 @@ import { formatDateTime, titleCase } from "@/lib/format";
 import { qk } from "@/lib/queries";
 import type { AuditEntry, Page } from "@/lib/types";
 
-const ENTITY_TYPES = ["user", "department", "attendance_session", "attendance_correction", "work_schedule", "holiday", "attendance_policy", "report"];
+const ENTITY_TYPES = ["user", "department", "attendance_upload", "attendance_daily", "work_schedule", "holiday", "attendance_policy", "report", "attendance_session", "attendance_correction"];
 
 function Changes({ before, after }: { before: Record<string, unknown> | null; after: Record<string, unknown> | null }) {
   const keys = Array.from(new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]));
@@ -49,7 +49,7 @@ export function AuditLogPage() {
   ];
   return (
     <div className="space-y-5">
-      <PageHeader title="Audit log" description="Corrections, approvals, role and manager changes, schedule changes, exports and sign-ins. Credentials are never logged." />
+      <PageHeader title="Audit log" description="Timesheet imports, HR overrides, role and manager changes, schedule changes, exports and sign-ins. Credentials are never logged." />
       <Card>
         <CardHeader
           title={q.data ? q.data.total + " entries" : "Entries"}

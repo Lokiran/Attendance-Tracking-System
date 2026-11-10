@@ -5,13 +5,14 @@ Usage (PowerShell, backend + frontend running):
     backend\\.venv\\Scripts\\python.exe scripts\\smoke_test.py [--base http://127.0.0.1:5173]
 
 It goes through the Vite proxy by default, exactly like the browser, and exercises login, CSRF,
-check-in/out, scoping, dashboards, corrections, CSV export and logout. Each check prints PASS/FAIL.
+timesheet-based attendance, scoping, dashboards, a timesheet import preview, CSV export and logout. Each check prints PASS/FAIL.
 """
 
 import argparse
 import os
 import sys
 import time
+from datetime import date, timedelta
 
 import httpx
 
@@ -41,6 +42,9 @@ class Session:
     def post(self, path, json=None, csrf=True):
         headers = {"X-CSRF-Token": self.csrf} if csrf and self.csrf else {}
         return self.c.post(path, json=json if json is not None else {}, headers=headers)
+
+    def upload(self, path, filename: str, content: bytes):
+        return self.c.post(path, files={"file": (filename, content, "text/csv")}, headers={"X-CSRF-Token": self.csrf or ""})
 
 
 def wait_for(base: str) -> None:
@@ -82,24 +86,19 @@ def main() -> int:
     cookie = r.headers.get("set-cookie", "")
     check("session cookie is HttpOnly", "ats_session=" in cookie and "httponly" in cookie.lower())
 
-    # --- check-in / check-out
+    # --- attendance comes from imported timesheets (no check-in / check-out)
     cur = emp.get("/api/attendance/current").json()
-    if cur["active_session"]:
-        emp.post("/api/attendance/check-out", {"break_minutes": 0})
-    check("state change without CSRF rejected", emp.post("/api/attendance/check-in", csrf=False).status_code == 403)
-    r = emp.post("/api/attendance/check-in")
-    check("check-in", r.status_code == 201, r.text[:200])
-    check("duplicate check-in rejected", emp.post("/api/attendance/check-in").status_code == 409)
-    cur = emp.get("/api/attendance/current").json()
-    check("current shows active session", cur["active_session"] is not None and cur["today_record"]["status"] == "PRESENT")
-    r = emp.post("/api/attendance/check-out", {"break_minutes": 0})
-    check("check-out", r.status_code == 200 and r.json()["status"] == "COMPLETED", r.text[:200])
-    check("check-out without session rejected", emp.post("/api/attendance/check-out").status_code == 409)
+    check("state change without CSRF rejected", emp.post("/api/auth/logout", csrf=False).status_code == 403)
+    check("check-in is gone", emp.post("/api/attendance/check-in").status_code in (404, 405))
+    check("corrections are gone", emp.get("/api/corrections").status_code == 404)
+    check("timesheets imported", cur["timesheet_through"] is not None and cur["my_timesheet_through"] is not None, str(cur)[:200])
 
     today = cur["today"]
-    month_start = today[:8] + "01"
+    # The seeded timesheets reach yesterday; a 30-day window always holds imported days.
+    month_start = (date.fromisoformat(today) - timedelta(days=30)).isoformat()
     s = emp.get(f"/api/attendance/employees/{me['id']}/summary", start=month_start, end=today).json()
-    check("summary has real figures", s["expected_days"] > 0 and s["net_minutes"] > 0 and s["attendance_percentage"] is not None, str(s)[:200])
+    check("summary has real figures", s["expected_days"] > 0 and s["present_days"] > 0 and s["hours_days"] > 0
+          and s["attendance_percentage"] is not None, str(s)[:200])
     days = emp.get(f"/api/attendance/employees/{me['id']}/days", start=month_start, end=today, page_size=5).json()
     check("history paginated", len(days["items"]) <= 5 and days["total"] >= len(days["items"]))
     trends = emp.get(f"/api/attendance/employees/{me['id']}/trends", granularity="month").json()
@@ -114,13 +113,12 @@ def main() -> int:
     check("manager login", mgr.login("priya.sharma@nexa.example", demo_pw).status_code == 200)
     rows = mgr.get("/api/dashboard/employees", start=month_start, end=today, page_size=50).json()["items"]
     names = sorted(x["full_name"] for x in rows)
-    check("manager sees only own reports", names == ["Farah Khan", "Rahul Reddy", "Sneha Rao"], str(names))
+    check("manager sees only own reports", names == ["Farah Khan", "Neha Joshi", "Rahul Reddy", "Sneha Rao"], str(names))
     ov = mgr.get("/api/dashboard/overview", start=month_start, end=today).json()
     snap = ov["snapshot"]
     check("snapshot categories sum to team size",
-          sum(snap[k] for k in ("present", "absent", "not_checked_in", "incomplete", "off")) == ov["headcount"])
-    pending = mgr.get("/api/corrections", scope="review", status="PENDING").json()
-    check("manager sees pending corrections", pending["total"] >= 1, str(pending)[:200])
+          sum(snap[k] for k in ("present", "wfh", "absent", "leave", "no_timesheet", "off")) == ov["headcount"])
+    check("manager cannot import timesheets", mgr.get("/api/admin/attendance-uploads").status_code == 403)
 
     # --- admin
     adm = Session(args.base)
@@ -129,7 +127,7 @@ def main() -> int:
     arjun = next(u for u in users["items"] if u["full_name"] == "Arjun Kumar")
     check("manager cannot read unrelated employee", mgr.get(f"/api/attendance/employees/{arjun['id']}/summary").status_code == 404)
     org = adm.get("/api/dashboard/overview", start=month_start, end=today).json()
-    check("admin org headcount", org["headcount"] == 12, str(org["headcount"]))
+    check("admin org headcount", org["headcount"] == 14, str(org["headcount"]))  # 15 demo users minus the untracked admin
     depts = adm.get("/api/dashboard/departments", start=month_start, end=today).json()
     check("department comparison", len(depts) >= 4)
     managers = adm.get("/api/dashboard/managers", start=month_start, end=today).json()
@@ -140,11 +138,13 @@ def main() -> int:
     audit = adm.get("/api/admin/audit-logs", page_size=5).json()
     check("audit log", audit["total"] > 0)
 
-    # --- correction approval
-    if pending["items"]:
-        cid = pending["items"][0]["id"]
-        r = mgr.post(f"/api/corrections/{cid}/approve", {"comment": "Smoke test approval"})
-        check("manager approves correction", r.status_code == 200 and r.json()["status"] == "APPROVED", r.text[:200])
+    # --- timesheet import preview (discarded, so the data is unchanged)
+    csv_body = f"Employee ID,Date\n{me['employee_code']},{month_start}\n".encode()
+    r = adm.upload("/api/admin/attendance-uploads", "smoke.csv", csv_body)
+    check("timesheet preview", r.status_code == 201 and r.json()["summary"]["presence_list"], r.text[:200])
+    if r.status_code == 201:
+        d = adm.post(f"/api/admin/attendance-uploads/{r.json()['id']}/discard")
+        check("timesheet preview discarded", d.status_code == 200 and d.json()["status"] == "DISCARDED")
 
     # --- CSV export
     r = mgr.get("/api/reports/team-attendance.csv", start=month_start, end=today)

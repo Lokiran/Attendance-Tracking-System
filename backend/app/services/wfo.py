@@ -2,7 +2,8 @@
 (``wfo_rules``), store the result in ``attendance_daily`` and build monthly policy summaries.
 
 Reads always recompute from the evidence, so they are never stale; ``refresh_days`` writes the result
-back whenever a source changes (check-in / check-out, an approved correction, an upload, an override).
+back whenever a source changes (a committed timesheet upload, an Admin override). Check-in sessions are
+no longer a source (attendance comes from imported timesheets).
 """
 
 from __future__ import annotations
@@ -19,15 +20,12 @@ from sqlalchemy.orm import Session
 from app.core import clock
 from app.core.context import RequestContext
 from app.core.errors import Forbidden, NotFound, ValidationFailed
-from app.core.timeutil import local_date, local_day_bounds, office_tz
+from app.core.timeutil import local_date, office_tz
 from app.models import (
     AttendanceDaily,
     AttendancePolicy,
-    AttendanceSession,
     DailyStatus,
-    SessionStatus,
     User,
-    WorkLocation,
     WorkMode,
 )
 from app.services import audit
@@ -99,22 +97,6 @@ class EmployeeDays:
     rows_by_date: dict[date, AttendanceDaily] = field(default_factory=dict)
 
 
-def _session_evidence(sessions: list[AttendanceSession]) -> dict:
-    ev = {"checkin_office_minutes": 0, "checkin_wfh_minutes": 0, "checkin_untagged_minutes": 0,
-          "checkin_office_seen": False, "checkin_wfh_seen": False}
-    for s in sessions:
-        minutes = (s.net_minutes or 0) if s.status == SessionStatus.COMPLETED else 0
-        if s.work_location == WorkLocation.OFFICE:
-            ev["checkin_office_minutes"] += minutes
-            ev["checkin_office_seen"] = True
-        elif s.work_location == WorkLocation.WFH:
-            ev["checkin_wfh_minutes"] += minutes
-            ev["checkin_wfh_seen"] = True
-        else:
-            ev["checkin_untagged_minutes"] += minutes
-    return ev
-
-
 def classify_range(db: Session, employees: list[User], start: date, end: date,
                    overrides: dict[tuple[int, date], dict] | None = None) -> dict[int, EmployeeDays]:
     """Classified days ``start..end`` per employee (future days included, marked by date).
@@ -122,22 +104,15 @@ def classify_range(db: Session, employees: list[User], start: date, end: date,
     ``overrides`` replaces evidence fields for (employee, date) pairs; the upload preview uses it to
     show what a file would change without writing anything.
     """
-    tz = office_tz()
     ids = [e.id for e in employees]
     # Six days either side so nominal weeks crossing the month boundary can be sized.
     schedules, holidays, _policy = _load_rules_inputs(db, start - timedelta(days=6), end + timedelta(days=6))
     rows: dict[tuple[int, date], AttendanceDaily] = {}
-    sessions: dict[tuple[int, date], list[AttendanceSession]] = defaultdict(list)
-    lo, hi = local_day_bounds(start, end)
     for i in range(0, len(ids), 500):
         chunk = ids[i:i + 500]
         for r in db.scalars(select(AttendanceDaily).where(AttendanceDaily.employee_id.in_(chunk),
                                                           AttendanceDaily.work_date.between(start, end))):
             rows[(r.employee_id, r.work_date)] = r
-        for s in db.scalars(select(AttendanceSession).where(
-                AttendanceSession.employee_id.in_(chunk), AttendanceSession.check_in_at >= lo,
-                AttendanceSession.check_in_at < hi, AttendanceSession.status != SessionStatus.VOIDED)):
-            sessions[(s.employee_id, local_date(s.check_in_at, tz))].append(s)
 
     out: dict[int, EmployeeDays] = {}
     for e in employees:
@@ -149,7 +124,6 @@ def classify_range(db: Session, employees: list[User], start: date, end: date,
         d = start
         while d <= end:
             row = rows.get((e.id, d))
-            day_sessions = sessions.get((e.id, d), [])
             workday = cal.scheduled(d)
             holiday = workday and d in holiday_map
             fields = {
@@ -159,19 +133,13 @@ def classify_range(db: Session, employees: list[User], start: date, end: date,
                 "upload_minutes": row.upload_minutes if row else None,
                 "badge_minutes": row.badge_minutes if row else None,
                 "wifi_minutes": row.wifi_minutes if row else None,
-                **_session_evidence(day_sessions),
             }
             if overrides and (e.id, d) in overrides:
                 fields.update(overrides[(e.id, d)])
             evidence = DayEvidence(**fields)
             cls = classify_day(evidence) if d >= emp.date_joined else DayClass(None, None, 0, 0)
-            ins = [s.check_in_at for s in day_sessions]
-            outs = [s.check_out_at for s in day_sessions if s.check_out_at]
-            days.append(ClassifiedDay(
-                d, cls, workday and not holiday, evidence, row,
-                first_in=(row.first_in if row and row.first_in else (min(ins) if ins else None)),
-                last_out=(row.last_out if row and row.last_out else (max(outs) if outs else None)),
-            ))
+            days.append(ClassifiedDay(d, cls, workday and not holiday, evidence, row,
+                                      first_in=row.first_in if row else None, last_out=row.last_out if row else None))
             d += timedelta(days=1)
         out[e.id] = EmployeeDays(e, days, cal, {k[1]: v for k, v in rows.items() if k[0] == e.id})
     return out
@@ -188,8 +156,7 @@ def summarize(ed: EmployeeDays, start: date, end: date, today: date, policy: Wfo
 def _has_evidence(c: ClassifiedDay) -> bool:
     e = c.evidence
     return bool(c.row or e.override or e.upload_mode or e.upload_minutes or e.badge_minutes is not None
-                or e.wifi_minutes or e.checkin_office_seen or e.checkin_wfh_seen or e.checkin_office_minutes
-                or e.checkin_wfh_minutes or e.checkin_untagged_minutes)
+                or e.wifi_minutes)
 
 
 def store(db: Session, ed: EmployeeDays, policy_row: AttendancePolicy, only: set[date] | None = None) -> int:
