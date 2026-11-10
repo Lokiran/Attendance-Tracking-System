@@ -467,6 +467,18 @@ export interface UploadConflict {
   rows: number[];
 }
 
+export interface UploadSheet { name: string; usable: boolean; rows: number }
+export interface UnknownEmployee {
+  employee_ref: string;
+  name: string | null;
+  other_names: string[];
+  rows: number;
+  first_date: string | null;
+  can_add: boolean;
+  reason: string | null;
+}
+export interface NameMismatch { employee_ref: string; file_name: string; app_name: string }
+
 export interface AttendanceUpload {
   id: number;
   filename: string;
@@ -494,6 +506,16 @@ export interface AttendanceUpload {
     errors: { row: number; employee: string | null; error: string }[];
     date_from: string | null;
     date_to: string | null;
+    // File details (uploads made before these existed do not have them)
+    sheet?: string | null;
+    sheets?: UploadSheet[];
+    presence_list?: boolean;
+    presence_mode?: "OFFICE" | "WFH" | null;
+    unknown_employees?: UnknownEmployee[];
+    name_mismatches?: NameMismatch[];
+    date_notes?: string[];
+    blank_rows?: number;
+    employees_added?: number;
   } | null;
   commit_summary: { applied_days: number; created_days: number; skipped_overrides: number; overrides_overwritten: number; error_rows: number } | null;
   overwrite_overrides: boolean;

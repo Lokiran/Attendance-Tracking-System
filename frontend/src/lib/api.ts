@@ -96,10 +96,10 @@ export const api = {
     return (await request("DELETE", path)).json();
   },
   /** Uploads a file as multipart form data (field name "file"), with the CSRF header like any write. */
-  async upload<T>(path: string, file: File): Promise<T> {
+  async upload<T>(path: string, file: File, params?: Params): Promise<T> {
     const form = new FormData();
     form.append("file", file);
-    return (await request("POST", path, { body: form })).json();
+    return (await request("POST", path, { params, body: form })).json();
   },
   /** Downloads a CSV (or other attachment) produced by the backend. */
   async download(path: string, params?: Params): Promise<string> {

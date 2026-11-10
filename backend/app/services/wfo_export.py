@@ -70,7 +70,7 @@ def build(db: Session, admin: User, month: str | None, manager_id: int | None, d
                 daily_rows.append([
                     e.employee_code, e.full_name, c.date,
                     c.cls.work_mode.value if c.cls.work_mode else "", c.cls.source.value if c.cls.source else "",
-                    "Yes" if is_wfo_day(PolicyDay(c.date, c.cls.work_mode, c.cls.office_minutes, c.scheduled), policy)
+                    "Yes" if is_wfo_day(PolicyDay(c.date, c.cls.work_mode, c.cls.office_minutes, c.scheduled, c.cls.hours_known), policy)
                     else "No",
                     round(c.cls.office_minutes / 60, 2), round(c.cls.wfh_minutes / 60, 2), "; ".join(c.cls.conflicts),
                 ])

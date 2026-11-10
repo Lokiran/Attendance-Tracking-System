@@ -16,6 +16,8 @@ day OFFICE, and each disagreement is written to ``conflicts``.
 Policy (all numbers from settings):
 
 * A **WFO day** is a day whose work mode is OFFICE with at least ``min_office_minutes`` office minutes.
+  When no source gave any hours for the day (an office presence list with dates only), the office signal
+  alone counts: the minimum cannot be checked, and treating it as failed would discard the import.
 * **Working days** (the denominator) are scheduled working days that are not holidays and not LEAVE,
   HOLIDAY or WEEKOFF in the data, plus days actually worked (OFFICE / WFH) on an off day.
 * Only **completed** days count (before today). Today is shown, and counted from tomorrow.
@@ -67,6 +69,14 @@ class DayClass:
     office_minutes: int
     wfh_minutes: int
     conflicts: tuple[str, ...] = ()
+    # False when no source gave any hours (e.g. an office presence list with dates only). The minimum office
+    # time cannot be checked then, so the day counts as a WFO day on the strength of the office signal.
+    hours_known: bool = True
+
+
+def _hours_known(e: DayEvidence, office: list[tuple[WfoSource, int]]) -> bool:
+    return (e.upload_minutes is not None or any(m > 0 for _s, m in office) or e.checkin_office_minutes > 0
+            or e.checkin_wfh_minutes > 0 or e.checkin_untagged_minutes > 0)
 
 
 def _office_signals(e: DayEvidence) -> list[tuple[WfoSource, int]]:
@@ -101,7 +111,7 @@ def classify_day(e: DayEvidence) -> DayClass:
         worked = max(_office_minutes(office), e.checkin_office_minutes + e.checkin_wfh_minutes
                      + e.checkin_untagged_minutes, e.upload_minutes or 0)
         return DayClass(e.override, WfoSource.MANUAL_OVERRIDE, worked if e.override == WorkMode.OFFICE else 0,
-                        worked if e.override == WorkMode.WFH else 0)
+                        worked if e.override == WorkMode.WFH else 0, hours_known=_hours_known(e, office))
 
     if office:
         source = office[0][0]
@@ -110,7 +120,8 @@ def classify_day(e: DayEvidence) -> DayClass:
             conflicts.append(f"UPLOAD_COLUMN said {e.upload_mode.value}; office signal from {source.value}")
         if e.checkin_wfh_seen or e.checkin_wfh_minutes:
             conflicts.append(f"CHECK_IN said WFH; office signal from {source.value}")
-        return DayClass(WorkMode.OFFICE, source, _office_minutes(office), e.checkin_wfh_minutes, tuple(conflicts))
+        return DayClass(WorkMode.OFFICE, source, _office_minutes(office), e.checkin_wfh_minutes, tuple(conflicts),
+                        hours_known=_hours_known(e, office))
 
     if e.upload_mode in NOT_WORKING:
         conflicts = []
@@ -141,6 +152,8 @@ def day_status(c: DayClass, full_day_minutes: int, half_day_minutes: int) -> Dai
     if c.work_mode == WorkMode.WEEKOFF:
         return DailyStatus.WEEKEND
     worked = c.office_minutes + c.wfh_minutes
+    if not c.hours_known and c.work_mode in (WorkMode.OFFICE, WorkMode.WFH):
+        return DailyStatus.PRESENT  # listed as worked, hours not supplied
     if worked >= full_day_minutes:
         return DailyStatus.PRESENT
     if worked >= half_day_minutes and worked > 0:
@@ -164,10 +177,13 @@ class PolicyDay:
     work_mode: WorkMode | None
     office_minutes: int
     scheduled: bool          # scheduled working day per schedule, not a holiday
+    hours_known: bool = True
 
 
 def is_wfo_day(d: PolicyDay, policy: WfoPolicy) -> bool:
-    return d.work_mode == WorkMode.OFFICE and d.office_minutes >= policy.min_office_minutes
+    """OFFICE with at least the minimum office time; when no hours are known at all (a presence list with
+    dates only), the office signal alone counts."""
+    return d.work_mode == WorkMode.OFFICE and (not d.hours_known or d.office_minutes >= policy.min_office_minutes)
 
 
 def is_working_day(d: PolicyDay) -> bool:

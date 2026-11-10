@@ -181,7 +181,7 @@ WEEK_PAD = timedelta(days=6)  # also classify the neighbouring days of the first
 
 
 def summarize(ed: EmployeeDays, start: date, end: date, today: date, policy: WfoPolicy) -> WfoSummary:
-    days = [PolicyDay(c.date, c.cls.work_mode, c.cls.office_minutes, c.scheduled) for c in ed.days]
+    days = [PolicyDay(c.date, c.cls.work_mode, c.cls.office_minutes, c.scheduled, c.cls.hours_known) for c in ed.days]
     return summarize_wfo(days, start=start, end=end, today=today, policy=policy, is_scheduled=ed.calendar.scheduled)
 
 
@@ -281,7 +281,7 @@ def employee_month(db: Session, employee: User, month: str | None) -> dict:
         "policy": policy_dict(policy), "summary": summary_dict(s), "weekly_wfo_breakdown": weeks_list(s),
         "days": [{
             "date": c.date, "work_mode": c.cls.work_mode, "wfo_source": c.cls.source,
-            "is_wfo_day": is_wfo_day(PolicyDay(c.date, c.cls.work_mode, c.cls.office_minutes, c.scheduled), policy),
+            "is_wfo_day": is_wfo_day(PolicyDay(c.date, c.cls.work_mode, c.cls.office_minutes, c.scheduled, c.cls.hours_known), policy),
             "office_minutes": c.cls.office_minutes, "wfh_minutes": c.cls.wfh_minutes,
             "conflicts": list(c.cls.conflicts), "scheduled": c.scheduled,
             "overridden": c.evidence.override is not None,

@@ -158,3 +158,8 @@ class UploadOut(BaseModel):
 
 class CommitRequest(BaseModel):
     overwrite_overrides: bool = Field(False, description="Replace days an Admin overrode (they are skipped otherwise)")
+
+
+class CreateEmployeesRequest(BaseModel):
+    employee_refs: list[str] | None = Field(None, max_length=5000,
+                                            description="IDs to add (default: every unknown ID that can be added)")

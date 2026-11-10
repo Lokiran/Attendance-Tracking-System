@@ -168,4 +168,50 @@ describe("WFO: attendance import", () => {
     await waitFor(() => expect(calls.find((c) => c.path === "/admin/attendance-uploads/7/commit")?.body).toEqual({ overwrite_overrides: true }));
     expect(await screen.findByText(/Applied 180 day\(s\)/)).toBeInTheDocument();
   });
+
+  it("reads a monthly workbook, switches sheet and adds unknown employees", async () => {
+    const workbook: AttendanceUpload = {
+      ...preview, id: 8, filename: "October 2026.xlsx", row_count: 9, error_count: 3,
+      summary: {
+        ...preview.summary!, columns: { employee: "Employee ID", name: "Employee", date: "Date" }, rows: 9, valid_rows: 6, error_rows: 3,
+        badge_rows: 0, duplicate_rows: 1, employee_days: 5, employees: 2, new_days: 5, by_work_mode: { OFFICE: 5 }, office: 5, wfh: 0,
+        office_below_minimum: 0, conflict_count: 0, conflicts: [], protected_overrides: 0,
+        errors: [{ row: 8, employee: "Intern - 10001", error: "unknown employee 'Intern - 10001' (not in the app yet)" }],
+        sheet: "October 2026", presence_list: true, presence_mode: "OFFICE", blank_rows: 6,
+        sheets: [{ name: "Raw Data", usable: true, rows: 1 }, { name: "October 2026", usable: true, rows: 9 }],
+        unknown_employees: [{ employee_ref: "Intern - 10001", name: "New Intern", other_names: ["N. Intern"], rows: 3, first_date: "2026-10-21", can_add: true, reason: null }],
+        name_mismatches: [{ employee_ref: "EMP002", file_name: "Somebody Else", app_name: "Priya Sharma" }],
+        date_notes: ["2 date(s) had day and month swapped and were read in October 2026."],
+      },
+    };
+    const added: AttendanceUpload = {
+      ...workbook, error_count: 0,
+      summary: { ...workbook.summary!, valid_rows: 9, error_rows: 0, errors: [], unknown_employees: [], employee_days: 8, office: 8, employees_added: 1 },
+    };
+    const { calls } = mockApi({
+      "/auth/me": me("ADMIN", { id: 1, full_name: "System Administrator" }),
+      "/admin/attendance-uploads": [],
+      "POST /admin/attendance-uploads": (url: URL) => (url.searchParams.get("sheet") === "Raw Data" ? { ...workbook, id: 9, summary: { ...workbook.summary!, sheet: "Raw Data" } } : workbook),
+      "POST /admin/attendance-uploads/8/discard": { ...workbook, status: "DISCARDED" },
+      "POST /admin/attendance-uploads/9/create-employees": { ...added, id: 9 },
+    });
+    renderApp("/admin/attendance-import");
+    const user = userEvent.setup();
+    await user.upload(await screen.findByLabelText("File"), new File(["x"], "October 2026.xlsx"));
+    await user.click(screen.getByRole("button", { name: "Upload and preview" }));
+    expect(await screen.findByText("October 2026.xlsx · preview")).toBeInTheDocument();
+    expect(screen.getByText(/1 employee ID\(s\) are not in the app yet \(3 row\(s\)\)/)).toBeInTheDocument();
+    expect(screen.getByText(/2 date\(s\) had day and month swapped/)).toBeInTheDocument();
+    expect(screen.queryByText("Rows that will not be imported")).not.toBeInTheDocument(); // unknown IDs have their own list
+    expect(screen.getByLabelText("Each listed day counts as")).toHaveValue("OFFICE");
+
+    await user.selectOptions(screen.getByLabelText("Sheet read"), "Raw Data");
+    await waitFor(() => expect(calls.some((c) => c.path === "/admin/attendance-uploads/8/discard")).toBe(true));
+    await waitFor(() => expect(screen.getByLabelText("Sheet read")).toHaveValue("Raw Data"));
+    expect(calls.filter((c) => c.method === "POST" && c.path === "/admin/attendance-uploads")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "Add 1 employee(s) and re-check" }));
+    expect(await screen.findByText(/1 employee\(s\) were added from this file/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import 8 day(s)" })).toBeEnabled();
+  });
 });

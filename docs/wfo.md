@@ -90,14 +90,36 @@ The existing `GET /api/attendance/employees/{id}/summary` now also returns a `wf
 
 ## Uploads (Phase 5)
 
-`POST /api/admin/attendance-uploads` (multipart `file`, admin) returns a **preview**; nothing changes yet.
-Then `POST …/{id}/commit {"overwrite_overrides": false}` or `POST …/{id}/discard`.
+`POST /api/admin/attendance-uploads` (multipart `file`, admin; optional query `sheet` and
+`presence_mode=OFFICE|WFH`) returns a **preview**; nothing changes yet. Then
+`POST …/{id}/commit {"overwrite_overrides": false}` or `POST …/{id}/discard`.
 
-* CSV (UTF-8; `,` `;` or tab) or Excel `.xlsx` (first sheet); at most 5 MB and 20,000 rows.
-* Required columns: employee (code or email) and date. Then at least one of: work mode, hours, in / out time,
-  source. Header aliases are configured in `config/wfo_mapping.json`.
-* Dates are day-first: `31/03/2026`, `31-03-2026`, `2026-03-31`, `31-Mar-2026`, or Excel dates.
-* Hours: `7.5` or `7:30`, or derived from in / out times. An out time earlier than the in time means the next day.
+* CSV (UTF-8; `,` `;` or tab) or Excel `.xlsx`; at most 5 MB and 20,000 rows.
+* **Which sheet**: the `sheet` asked for; otherwise the first sheet named like a month ("September 2026",
+  "Sep-26", "2026-09") that has an employee and a date column; otherwise the first sheet that has them. The
+  preview lists every sheet (usable or not, with row counts) and the page can read another one.
+* The header row can be any of the first 20 rows. Rows with neither an employee nor a date are skipped, so a
+  pivot table or notes beside the data do no harm.
+* Required columns: employee (code or email) and date. Header aliases are configured in
+  `config/wfo_mapping.json`. When there is both an ID column ("Employee ID", "Code") and a plain "Employee"
+  column, the plain one is the **name**: it is only compared with the app (differences are listed, rows still
+  match by ID).
+* **Presence list**: with no work mode and no source column, every listed day is an OFFICE day (or WFH when
+  `presence_mode=WFH`). Hours / in / out columns are still read when present.
+* Dates: text is day-first (`31/03/2026`, `31-03-2026`, `2026-03-31`, `31-Mar-2026`). A date that could be read
+  both ways takes the reading inside the months the rest of the file covers: `09-01-2026` in a September file
+  is 1 September. The same applies to **Excel dates stored with day and month swapped** (Excel on a US-format
+  PC turns a typed `01/09/2026` into 9 January). The preview says how many dates were read this way.
+* Employee IDs match case-insensitively, and runs of spaces count as one (`Intern - 10001`).
+* **Unknown employee IDs** are listed (with the file's name, row count and first date).
+  `POST …/{id}/create-employees {"employee_refs": null}` adds them as employees: the ID and the most frequent
+  name from the file, a placeholder email `<id>@imported.example.com`, an unusable random password (sign-in
+  needs a password reset or SSO), no manager / department, joined on the 1st of the month of their first date
+  in the file. Each creation is audited (`USER_CREATED` with `via_upload`). The upload's rows are re-checked
+  without uploading the file again. Email addresses and IDs that do not fit the employee ID rule cannot be added
+  this way.
+* Hours: `7.5`, `7:30` or `07:30:00`, or derived from in / out times. An out time earlier than the in time means
+  the next day.
 * Rows whose source is a badge value (Badge, Swipe, Access card …) are badge evidence.
 * Future dates are accepted only for LEAVE / HOLIDAY / WEEKOFF. Dates before an employee joined are refused.
 * **Preview shows** OFFICE / WFH counts, conflicts, rows with problems (with row numbers), new days, and days
@@ -113,8 +135,10 @@ Sample files: `samples/` (see `samples/README.md`).
 * **Leave** exists only from imported files or Admin overrides. Leave requests stay removed (decision of
   2026-11-05).
 * **Manager scope** is the whole reporting line plus the manager, consistent with the rest of the app.
-* An imported OFFICE day **without hours** is OFFICE but not a WFO day, unless another source supplies office
-  hours. Previews count these as "below the minimum".
+* An OFFICE day **without hours from any source** (a presence list, a work-mode-only row, a badge row without
+  times) counts as a WFO day and as present: the file says the person was in the office, and there is nothing
+  to measure. When hours are known, the minimum office hours apply.
+* Employee IDs may contain inner spaces and `.` (`Intern - 10001`, `Guest 2`), as attendance files use them.
 * Check-ins made **without a location** (older data, correction-created sessions) count as worked hours with
   no office signal (WFH). A correction keeps the location of the session it fixes.
 * Grouping in the admin view is by **direct** manager, so each person appears once.

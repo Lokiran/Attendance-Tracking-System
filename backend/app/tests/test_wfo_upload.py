@@ -1,6 +1,7 @@
 """WFO uploads: parsing, preview, commit (upsert), override protection, badge conflicts and the sample files."""
 
 from datetime import date, datetime, time
+import io
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,7 @@ from sqlalchemy import func, select
 
 from app.core.errors import ValidationFailed
 from app.models import AttendanceDaily, AuditLog, Role, User
-from app.services.wfo_upload import parse_date, parse_hours, parse_time, read_table
+from app.services.wfo_upload import DateReader, parse_date, parse_hours, parse_time, read_table
 from app.tests.conftest import login
 
 SAMPLES = Path(__file__).resolve().parents[3] / "samples"
@@ -75,9 +76,37 @@ def test_csv_delimiters_and_file_checks():
 def test_header_problems_are_reported(client, staff):
     h = login(client, staff.admin)
     r = upload(client, h, "x.csv", b"Name,Day\nA,2026-10-05\n")
-    assert r.status_code == 422 and "Missing column(s): employee" in r.json()["error"]["message"]
+    assert r.status_code == 422 and "Could not find an employee and a date column" in r.json()["error"]["message"]
+    assert "Name, Day" in r.json()["error"]["message"]
+
+
+def test_employee_and_date_only_is_an_office_presence_list(client, staff):
+    h = login(client, staff.admin)
     r = upload(client, h, "x.csv", b"Employee,Date\nEMP001,2026-10-05\n")
-    assert r.status_code == 422 and "nothing to import" in r.json()["error"]["message"]
+    assert r.status_code == 201, r.text
+    s = r.json()["summary"]
+    assert s["presence_list"] and s["presence_mode"] == "OFFICE" and s["office"] == 1 and s["error_rows"] == 0
+    r = client.post(URL, headers=h, params={"presence_mode": "WFH"},
+                    files={"file": ("x.csv", b"Employee,Date\nEMP001,2026-10-05\n", "text/csv")})
+    assert r.json()["summary"]["wfh"] == 1 and r.json()["summary"]["presence_mode"] == "WFH"
+    r = client.post(URL, headers=h, params={"presence_mode": "LEAVE"},
+                    files={"file": ("x.csv", b"Employee,Date\nEMP001,2026-10-05\n", "text/csv")})
+    assert r.status_code == 422
+
+
+def test_ambiguous_dates_follow_the_month_of_the_file():
+    # 09-01-2026 and an Excel date stored as 9 January both mean 1 September in a September file.
+    values = ["15/09/2026", "30-09-2026", datetime(2026, 9, 18), "09-01-2026", datetime(2026, 1, 9),
+              datetime(2026, 9, 5)]
+    reader = DateReader.for_values(values)
+    assert reader.months == {(2026, 9)}
+    assert [reader.read(v) for v in values] == [date(2026, 9, 15), date(2026, 9, 30), date(2026, 9, 18),
+                                                date(2026, 9, 1), date(2026, 9, 1), date(2026, 9, 5)]
+    assert reader.month_first == 2
+    # Without other dates to go by, text is day-first and an Excel date stays as stored.
+    alone = DateReader.for_values(["05/06/2026"])
+    assert alone.read("05/06/2026") == date(2026, 6, 5) and alone.read(datetime(2026, 1, 9)) == date(2026, 1, 9)
+    assert parse_hours("08:37:00") == 517
 
 
 # ------------------------------------------------------------------ sample files: preview and commit
@@ -208,3 +237,107 @@ def test_upload_access_and_lifecycle(client, staff, db):
     assert listed[0]["id"] == up["id"] and listed[0]["uploaded_by_name"] == "Hr Admin"
     assert client.get(f"{URL}/999").status_code == 404
     assert db.scalar(select(User).where(User.employee_code == "EMP001")) is not None
+
+
+# ------------------------------------------------------------------ a monthly workbook (shaped like a real one)
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def monthly_workbook() -> bytes:
+    """Raw extract first, then the month's sheet: ID + name + date, dates mixed (text day-first, Excel dates,
+    two stored with day and month swapped), a duplicate day in two formats, an intern ID with spaces that the
+    app does not know, a name that differs from the app, and a pivot table beside the data."""
+    from openpyxl import Workbook
+    wb = Workbook()
+    raw = wb.active
+    raw.title = "Raw Data"
+    raw.append(["Code", "Employee", "Date", "Time In", "Time Out", "Total Hrs"])
+    raw.append(["EMP001", "Person EMP001", "05/10/2026", "09:30", "18:00", "08:30:00"])
+    month = wb.create_sheet("October 2026")
+    month.append(["Employee ID", "Employee", "Date", None, "Row Labels", "Count of Date"])
+    rows = [
+        ("EMP001", "Person EMP001", datetime(2026, 1, 10)),   # Excel swapped: 1 October
+        ("EMP001", "Person EMP001", datetime(2026, 2, 10)),   # 2 October
+        ("EMP001", "Person EMP001", "14/10/2026"),
+        ("EMP001", "Person EMP001", "14-10-2026"),             # same day again
+        ("EMP001", "Person EMP001", datetime(2026, 10, 15)),
+        ("EMP002", "Somebody Else", "20/10/2026"),
+        ("Intern - 10001", "New Intern", "21/10/2026"),
+        ("Intern  -  10001", "New Intern", datetime(2026, 10, 22)),  # extra spaces: same person
+        ("Intern - 10001", "N. Intern", "23/10/2026"),
+    ]
+    for i, (code, name, d) in enumerate(rows):
+        month.append([code, name, d, None, f"Label {i}", 1])
+    for i in range(5):  # the pivot table is longer than the data
+        month.append([None, None, None, None, f"More {i}", 2])
+    month.append([None, None, None, None, "Grand Total", 19])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_monthly_workbook_imports_and_adds_unknown_people(client, staff, db):
+    h = login(client, staff.admin)
+    r = upload(client, h, "October 2026.xlsx", monthly_workbook(), XLSX)
+    assert r.status_code == 201, r.text
+    up, s = r.json(), r.json()["summary"]
+    assert s["sheet"] == "October 2026"  # the month's sheet, not the raw extract that comes first
+    assert [x["name"] for x in s["sheets"]] == ["Raw Data", "October 2026"] and all(x["usable"] for x in s["sheets"])
+    assert s["presence_list"] and s["presence_mode"] == "OFFICE"
+    assert s["rows"] == 9 and s["blank_rows"] == 6 and s["duplicate_rows"] == 1
+    assert s["columns"] == {"employee": "Employee ID", "name": "Employee", "date": "Date"}
+    assert any("swapped" in n for n in s["date_notes"])
+    assert s["name_mismatches"] == [{"employee_ref": "EMP002", "file_name": "Somebody Else",
+                                     "app_name": "Person EMP002"}]
+    [intern] = s["unknown_employees"]
+    assert intern["employee_ref"] == "Intern - 10001" and intern["rows"] == 3 and intern["can_add"]
+    assert intern["name"] == "New Intern" and intern["other_names"] == ["N. Intern"]
+    assert intern["first_date"] == "2026-10-21" and up["error_count"] == 3
+    assert s["office"] == 5 and s["date_from"] == "2026-10-01"  # EMP001: 1, 2, 14, 15 Oct; EMP002: 20 Oct
+
+    r = client.post(f"{URL}/{up['id']}/create-employees", headers=h, json={})
+    assert r.status_code == 200, r.text
+    after = r.json()
+    assert after["error_count"] == 0 and after["summary"]["unknown_employees"] == []
+    assert after["summary"]["employees_added"] == 1 and after["summary"]["office"] == 8
+    new = db.scalar(select(User).where(User.employee_code == "INTERN - 10001"))
+    assert new.full_name == "New Intern" and new.email == "intern.10001@imported.example.com"
+    assert new.role == Role.EMPLOYEE and new.date_joined == date(2026, 10, 1) and new.manager_id is None
+    assert db.scalar(select(AuditLog).where(AuditLog.action == "USER_CREATED",
+                                            AuditLog.entity_id == str(new.id))) is not None
+    assert client.post(f"{URL}/{up['id']}/create-employees", headers=h, json={}).status_code == 422  # nobody left
+
+    r = client.post(f"{URL}/{up['id']}/commit", headers=h, json={})
+    assert r.json()["commit_summary"]["applied_days"] == 8
+    emp1 = wfo_month(client, staff.people["EMP001"].id)
+    assert emp1["summary"]["wfo_days"] == 4 and day(emp1, "2026-10-01")["work_mode"] == "OFFICE"
+    assert day(emp1, "2026-10-01")["is_wfo_day"]  # a presence list has no hours: the day still counts
+    assert wfo_month(client, new.id)["summary"]["wfo_days"] == 3
+    # The imported ID (with spaces) matches again next time, however it is spaced or cased.
+    again = upload(client, h, "x.csv", b"Employee,Date\nintern   - 10001,2026-10-26\n").json()
+    assert again["error_count"] == 0
+
+
+def test_sheet_can_be_chosen(client, staff):
+    h = login(client, staff.admin)
+    content = monthly_workbook()
+    r = client.post(URL, headers=h, params={"sheet": "Raw Data"}, files={"file": ("m.xlsx", content, XLSX)})
+    s = r.json()["summary"]
+    assert r.status_code == 201 and s["sheet"] == "Raw Data" and s["presence_list"]
+    assert s["columns"]["hours"] == "Total Hrs" and s["office"] == 1 and s["office_below_minimum"] == 0
+    r = client.post(URL, headers=h, params={"sheet": "Nope"}, files={"file": ("m.xlsx", content, XLSX)})
+    assert r.status_code == 422 and "There is no sheet" in r.json()["error"]["message"]
+
+
+def test_only_addable_ids_are_added(client, staff):
+    h = login(client, staff.admin)
+    csv = b"Employee,Date\nsomeone@else.example,2026-10-05\nok-77,2026-10-05\n"
+    up = upload(client, h, "x.csv", csv).json()
+    by_ref = {u["employee_ref"]: u for u in up["summary"]["unknown_employees"]}
+    assert not by_ref["someone@else.example"]["can_add"] and by_ref["ok-77"]["can_add"]
+    after = client.post(f"{URL}/{up['id']}/create-employees", headers=h, json={"employee_refs": ["OK-77"]}).json()
+    assert after["error_count"] == 1
+    assert [u["employee_ref"] for u in after["summary"]["unknown_employees"]] == ["someone@else.example"]
+    manager_h = login(client, staff.manager)
+    assert client.post(f"{URL}/{up['id']}/create-employees", headers=manager_h, json={}).status_code == 403

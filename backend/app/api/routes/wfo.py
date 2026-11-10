@@ -7,9 +7,10 @@ from fastapi import APIRouter, File, Query, Response, UploadFile
 
 from app.api.deps import DB, AdminUser, Ctx, CurrentUser, ManagerOrAdmin
 from app.core.errors import NotFound
-from app.models import User
+from app.models import User, WorkMode
 from app.schemas.wfo import (
     CommitRequest,
+    CreateEmployeesRequest,
     EmployeeWfoOut,
     OrgWfoOut,
     OverrideOut,
@@ -107,10 +108,15 @@ def _upload_out(db, upload) -> UploadOut:
 
 @router.post("/admin/attendance-uploads", response_model=UploadOut, status_code=201,
              summary="Upload an attendance / badge file (CSV or Excel) and get a preview; nothing is applied yet")
-def upload_attendance(admin: AdminUser, db: DB, ctx: Ctx, file: UploadFile = File(...)):
+def upload_attendance(admin: AdminUser, db: DB, ctx: Ctx, file: UploadFile = File(...),
+                      sheet: str | None = Query(None, max_length=100, description="Excel sheet (default: the first "
+                                                "with an employee and a date column)"),
+                      presence_mode: WorkMode = Query(WorkMode.OFFICE, description="For a presence list (no work "
+                                                      "mode column): OFFICE or WFH")):
     # A plain def runs in the thread pool, so parsing and database work never block the event loop.
     content = file.file.read(wfo_upload.MAX_UPLOAD_BYTES + 1)  # one byte over the limit is enough to refuse
-    return _upload_out(db, wfo_upload.preview(db, admin, file.filename or "upload", content, ctx))
+    return _upload_out(db, wfo_upload.preview(db, admin, file.filename or "upload", content, ctx, sheet=sheet,
+                                              presence_mode=presence_mode))
 
 
 @router.get("/admin/attendance-uploads", response_model=list[UploadOut], summary="Recent uploads (admin)")
@@ -132,3 +138,9 @@ def commit_upload(upload_id: int, body: CommitRequest, admin: AdminUser, db: DB,
 @router.post("/admin/attendance-uploads/{upload_id}/discard", response_model=UploadOut)
 def discard_upload(upload_id: int, admin: AdminUser, db: DB, ctx: Ctx):
     return _upload_out(db, wfo_upload.discard(db, admin, upload_id, ctx))
+
+
+@router.post("/admin/attendance-uploads/{upload_id}/create-employees", response_model=UploadOut,
+             summary="Add the upload's unknown employee IDs as employees, then re-check its rows")
+def create_upload_employees(upload_id: int, body: CreateEmployeesRequest, admin: AdminUser, db: DB, ctx: Ctx):
+    return _upload_out(db, wfo_upload.create_employees(db, admin, upload_id, body.employee_refs, ctx))

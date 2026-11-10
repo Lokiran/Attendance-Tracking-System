@@ -31,6 +31,16 @@ def test_duplicate_email_and_code_rejected(client, org):
                        json=new_user(email="other@test.example", employee_code="emp900")).status_code == 409
 
 
+def test_employee_codes_may_have_inner_spaces_and_dots(client, org):
+    # Attendance files use IDs like "Intern - 10001" or "Guest 2".
+    h = login(client, org.admin)
+    r = client.post("/api/admin/users", headers=h, json=new_user(employee_code="Intern - 10001"))
+    assert r.status_code == 201 and r.json()["employee_code"] == "INTERN - 10001"
+    for bad in (" EMP1", "EMP1 ", "EMP#1", "-EMP"):
+        r = client.post("/api/admin/users", headers=h, json=new_user(employee_code=bad, email="x@test.example"))
+        assert r.status_code == 422, bad
+
+
 def test_manager_assignment_validation(client, org):
     h = login(client, org.admin)
     r = client.patch(f"/api/admin/users/{org.priya.id}", headers=h, json={"manager_id": org.priya.id})

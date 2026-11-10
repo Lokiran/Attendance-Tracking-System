@@ -7,8 +7,11 @@ from app.schemas.auth import ManagerBrief
 from app.schemas.common import DepartmentBrief, ORMModel
 
 
+CODE_PATTERN = r"^[A-Za-z0-9](?:[A-Za-z0-9 ._-]*[A-Za-z0-9])?$"  # inner spaces, ".", "-", "_"
+
+
 class UserCreate(BaseModel):
-    employee_code: str = Field(min_length=2, max_length=32, pattern=r"^[A-Za-z0-9_-]+$")
+    employee_code: str = Field(min_length=2, max_length=32, pattern=CODE_PATTERN)
     full_name: str = Field(min_length=2, max_length=120)
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
@@ -21,7 +24,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    employee_code: str | None = Field(None, min_length=2, max_length=32, pattern=r"^[A-Za-z0-9_-]+$")
+    employee_code: str | None = Field(None, min_length=2, max_length=32, pattern=CODE_PATTERN)
     full_name: str | None = Field(None, min_length=2, max_length=120)
     email: EmailStr | None = None
     role: Role | None = None

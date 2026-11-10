@@ -25,7 +25,7 @@ import type { AdminUser, Department, Page, Role } from "@/lib/types";
 const ROLES: Role[] = ["EMPLOYEE", "MANAGER", "ADMIN"];
 
 const baseSchema = z.object({
-  employee_code: z.string().trim().min(2, "At least 2 characters").max(32).regex(/^[A-Za-z0-9_-]+$/, "Letters, digits, - and _ only"),
+  employee_code: z.string().trim().min(2, "At least 2 characters").max(32).regex(/^[A-Za-z0-9](?:[A-Za-z0-9 ._-]*[A-Za-z0-9])?$/, "Letters, digits, spaces, ., - and _ only"),
   full_name: z.string().trim().min(2, "Name is required").max(120),
   email: z.string().trim().email("Enter a valid email"),
   role: z.enum(["EMPLOYEE", "MANAGER", "ADMIN"]),

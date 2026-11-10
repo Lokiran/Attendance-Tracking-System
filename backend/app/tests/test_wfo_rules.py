@@ -118,7 +118,9 @@ def test_day_status_from_minutes():
     full, half = 480, 240
     assert day_status(classify_day(DayEvidence(badge_minutes=500)), full, half) == DailyStatus.PRESENT
     assert day_status(classify_day(DayEvidence(badge_minutes=300)), full, half) == DailyStatus.HALF_DAY
-    assert day_status(classify_day(DayEvidence(badge_minutes=0)), full, half) == DailyStatus.ABSENT
+    # a swipe with no time span: present, hours unknown
+    assert day_status(classify_day(DayEvidence(badge_minutes=0)), full, half) == DailyStatus.PRESENT
+    assert day_status(classify_day(DayEvidence(badge_minutes=60)), full, half) == DailyStatus.ABSENT
     assert day_status(classify_day(DayEvidence(upload_mode=WorkMode.LEAVE)), full, half) == DailyStatus.LEAVE
     assert day_status(classify_day(DayEvidence(scheduled_workday=False)), full, half) == DailyStatus.WEEKEND
 
@@ -285,3 +287,15 @@ def test_a_week_straddling_two_months_is_judged_on_all_its_days():
     assert first.week_start == date(2026, 9, 28) and first.wfo_days == 3 and first.required == 3
     assert first.status == "MET"  # judged on Mon 28 Sep - Sun 4 Oct, not just Thu-Fri
     assert s.wfo_days == 12 and s.compliance == "COMPLIANT"  # monthly figures still count October only
+
+
+def test_office_days_without_any_hours_count_as_wfo_days():
+    """A presence list (dates only) gives OFFICE with no hours: the minimum cannot be checked, so it counts."""
+    c = classify_day(DayEvidence(upload_mode=O))
+    assert (c.work_mode, c.hours_known) == (O, False)
+    assert classify_day(DayEvidence(upload_mode=O, upload_minutes=120)).hours_known  # hours given: checked
+    days = month({date(2026, 11, 2): (O, 0), date(2026, 11, 3): (O, 120)})
+    days = [PolicyDay(d.date, d.work_mode, d.office_minutes, d.scheduled, hours_known=d.date != date(2026, 11, 2))
+            for d in days]
+    s = summary(days)
+    assert s.wfo_days == 1 and s.office_days_below_minimum == 1  # 2 Nov (unknown) counts, 3 Nov (2 h) does not

@@ -18,7 +18,7 @@ from app.core.config import BACKEND_DIR
 from app.models.enums import WorkMode
 
 DEFAULT_FILE = BACKEND_DIR / "config" / "wfo_mapping.json"
-COLUMN_KEYS = ("employee", "date", "work_mode", "hours", "in_time", "out_time", "source")
+COLUMN_KEYS = ("employee", "name", "date", "work_mode", "hours", "in_time", "out_time", "source")
 
 
 def normalize(text: str | None) -> str:
