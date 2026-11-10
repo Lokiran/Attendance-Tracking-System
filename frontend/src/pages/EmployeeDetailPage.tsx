@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { api, ApiError } from "@/lib/api";
-import { titleCase } from "@/lib/format";
+import { ROLE_LABEL } from "@/lib/format";
 import type { TeamMember } from "@/lib/types";
 
 /** An employee's attendance seen by their manager chain or an admin (scope enforced by the API). */
@@ -52,7 +52,7 @@ export function EmployeeDetailPage() {
               <span>
                 {emp.full_name}
                 <span className="block text-sm font-normal text-ink-2">
-                  {emp.employee_code} · {emp.job_title ?? titleCase(emp.role)} · reports to {emp.manager_name ?? "—"}
+                  {emp.employee_code} · {emp.job_title ?? ROLE_LABEL[emp.role]} · reports to {emp.manager_name ?? "—"}
                   {!emp.is_active && " · inactive"}
                 </span>
               </span>

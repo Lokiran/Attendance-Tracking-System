@@ -16,7 +16,7 @@ Status: `[x]` done · `[ ]` open · `[~]` blocked (reason given). Each item has 
 | Frontend tests | 21 passed (one test file); type-check and build clean |
 | Database | Verified on SQLite only; PostgreSQL install blocked on this laptop (download 403, no admin) |
 | Delivery | Not a git repository; no CI; no Dockerfile; no staging environment |
-| Auto attendance | Phase 1 (schema) done; Phases 3–9 open (see `auto-attendance-todo.md`); off by default |
+| Auto attendance | Phase 1 (foundation: schema, settings, Entra sign-in) done; Phases 2–5 open (see `TODO.md`); off by default |
 
 ---
 

@@ -53,6 +53,11 @@ subtrees are computed with a recursive CTE (`UNION`, so they're cycle-safe).
 
 ## Authentication and session security
 
+* **Sign-in methods**: Microsoft Entra ID (OIDC authorization code + PKCE, `app/services/entra.py`),
+  email/password (`PASSWORD_LOGIN_ENABLED`) and a dev-only bypass (`DEV_LOGIN_ENABLED`, refused in
+  production). All three end in the same server-side session (`auth_service.start_session`), and each
+  login is audited with its method. Entra users are matched by `users.graph_user_id`, or on first sign-in
+  by email (then linked). Unknown, inactive or differently linked accounts are refused.
 * **Passwords**: Argon2id (argon2-cffi); rehashed on login if parameters change. Minimum 10
   characters with letters and digits. The hash is never serialized.
 * **Sessions**: a random 256-bit token sits in an `HttpOnly` cookie `ats_session`

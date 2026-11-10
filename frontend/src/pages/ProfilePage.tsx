@@ -10,7 +10,7 @@ import { Field, Input } from "@/components/ui/Fields";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
-import { formatDate, titleCase } from "@/lib/format";
+import { formatDate, ROLE_LABEL } from "@/lib/format";
 
 const schema = z
   .object({
@@ -44,7 +44,7 @@ export function ProfilePage() {
     ["Name", user.full_name],
     ["Email", user.email],
     ["Employee ID", user.employee_code],
-    ["Role", titleCase(user.role)],
+    ["Role", ROLE_LABEL[user.role]],
     ["Job title", user.job_title ?? "—"],
     ["Department", user.department?.name ?? "Unassigned"],
     ["Manager", user.manager?.full_name ?? "—"],

@@ -24,6 +24,16 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: ReactNode;
 }
 
+/** Button styling for elements that must be links (e.g. a full-page redirect to Microsoft sign-in). */
+export function buttonClass(variant: Variant = "primary", size: Size = "md", className?: string) {
+  return clsx(
+    "inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-55",
+    variants[variant],
+    sizes[size],
+    className,
+  );
+}
+
 export function Button({ variant = "primary", size = "md", loading, icon, className, children, disabled, ...rest }: ButtonProps) {
   return (
     <button
@@ -31,12 +41,7 @@ export function Button({ variant = "primary", size = "md", loading, icon, classN
       {...rest}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={clsx(
-        "inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-55",
-        variants[variant],
-        sizes[size],
-        className,
-      )}
+      className={buttonClass(variant, size, className)}
     >
       {loading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : icon}
       {children}

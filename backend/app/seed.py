@@ -6,9 +6,11 @@
 * Passwords come from SEED_ADMIN_PASSWORD / SEED_DEMO_PASSWORD; nothing is hard-coded.
 """
 
+import hashlib
 import logging
 import os
 import random
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
@@ -82,7 +84,17 @@ PEOPLE = [
            "Software Engineering", "MGR002"),
     Person("EMP006", "Divya Menon", Role.EMPLOYEE, "HR Generalist", "Human Resources", "MGR003"),
     Person("EMP005", "Kiran Patel", Role.EMPLOYEE, "Operations Analyst", "Operations", "MGR004"),
+    Person("EMP009", "Neha Joshi", Role.EMPLOYEE, "Data Engineer", "AI Engineering", "MGR001"),
+    Person("EMP010", "Vivek Singh", Role.EMPLOYEE, "QA Engineer", "Software Engineering", "MGR002"),
 ]
+
+
+def demo_identities(code: str) -> tuple[str, str]:
+    """Deterministic demo identities for automatic attendance: a device MAC (locally administered
+    range 02:..., never a real vendor address) and an Entra object id. Used by the mock collectors."""
+    n = int(hashlib.sha256(code.encode()).hexdigest()[:6], 16)
+    mac = "02:a7:5e:" + ":".join(f"{(n >> shift) & 0xFF:02x}" for shift in (16, 8, 0))
+    return mac, str(uuid.uuid5(uuid.NAMESPACE_URL, f"https://nexa.example/ats-demo/{code}"))
 HEADS = {"AI Engineering": "MGR001", "Software Engineering": "MGR002", "Human Resources": "MGR003",
          "Operations": "MGR004"}
 
@@ -130,6 +142,14 @@ def _upsert_people(db: Session, admin_email: str, admin_pw: str, demo_pw: str, r
     db.flush()
     for p in PEOPLE:
         users[p.code].manager_id = users[p.manager].id if p.manager else None
+        if p.tracked:
+            # Fill identities only where empty: never overwrite a real MAC or Entra id set by HR.
+            mac, oid = demo_identities(p.code)
+            u = users[p.code]
+            if u.wifi_identity is None and db.scalar(select(User.id).where(User.wifi_identity == mac)) is None:
+                u.wifi_identity = mac
+            if u.graph_user_id is None and db.scalar(select(User.id).where(User.graph_user_id == oid)) is None:
+                u.graph_user_id = oid
     for dept_name, code in HEADS.items():
         depts[dept_name].department_head_id = users[code].id
     db.flush()

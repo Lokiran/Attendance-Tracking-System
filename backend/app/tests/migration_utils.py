@@ -24,8 +24,19 @@ def alembic_config(url: str | None = None) -> Config:
     return cfg
 
 
+def drop_leftover_tables(engine: Engine) -> None:
+    """Drop tables that exist in the database but not in the current models, e.g. tables of an older
+    revision left by a migration test. They reference current tables, so they must go first."""
+    leftovers = set(inspect(engine).get_table_names()) - set(Base.metadata.tables) - {"alembic_version"}
+    cascade = " CASCADE" if engine.dialect.name == "postgresql" else ""
+    with engine.begin() as conn:
+        for table in sorted(leftovers):
+            conn.execute(text(f'DROP TABLE IF EXISTS "{table}"{cascade}'))
+
+
 def reset_schema(engine: Engine) -> None:
-    """Drop every application table and the Alembic version table."""
+    """Drop every application table (current and leftover) and the Alembic version table."""
+    drop_leftover_tables(engine)
     Base.metadata.drop_all(engine)
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))

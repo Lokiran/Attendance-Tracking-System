@@ -11,6 +11,17 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class DevLoginRequest(BaseModel):
+    email: EmailStr
+
+
+class ProvidersOut(BaseModel):
+    """Which sign-in methods the login page offers."""
+    password: bool
+    entra: bool
+    dev: bool
+
+
 class ManagerBrief(ORMModel):
     id: int
     full_name: str

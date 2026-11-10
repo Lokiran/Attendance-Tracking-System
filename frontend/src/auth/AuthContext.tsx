@@ -13,6 +13,8 @@ interface AuthState {
   /** Message shown on the login page after an involuntary sign-out (e.g. expired session). */
   notice: string | null;
   login: (email: string, password: string) => Promise<Profile>;
+  /** Local testing only (DEV_LOGIN_ENABLED): sign in as an active user without a password. */
+  devLogin: (email: string) => Promise<Profile>;
   logout: () => Promise<void>;
   hasRole: (...roles: Role[]) => boolean;
 }
@@ -95,9 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("ats:unauthorized", onUnauthorized);
   }, [qc]);
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      const data = await api.post<MeResponse>("/auth/login", { email, password });
+  const signedIn = useCallback(
+    (data: MeResponse) => {
       apply(data);
       setNotice(null);
       qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
@@ -106,6 +107,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return data.user;
     },
     [qc],
+  );
+  const login = useCallback(
+    async (email: string, password: string) => signedIn(await api.post<MeResponse>("/auth/login", { email, password })),
+    [signedIn],
+  );
+  const devLogin = useCallback(
+    async (email: string) => signedIn(await api.post<MeResponse>("/auth/dev-login", { email })),
+    [signedIn],
   );
 
   const logout = useCallback(async () => {
@@ -127,10 +136,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading: me.isLoading,
       notice,
       login,
+      devLogin,
       logout,
       hasRole: (...roles) => !!user && roles.includes(user.role),
     };
-  }, [me.data, me.isLoading, notice, login, logout]);
+  }, [me.data, me.isLoading, notice, login, devLogin, logout]);
 
   if (me.isError) {
     // Backend unreachable on first load: show a clear message rather than a blank screen.

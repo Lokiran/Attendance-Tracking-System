@@ -56,6 +56,48 @@ describe("login", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
     expect(await screen.findByRole("heading", { name: /Good (morning|afternoon|evening), Rahul/ })).toBeInTheDocument();
   });
+
+  it("offers Microsoft sign-in, keeping the page to return to", async () => {
+    mockApi({ "/auth/me": apiError(401, "Not signed in"), "/auth/providers": { password: true, entra: true, dev: false } });
+    renderApp("/login");
+    const link = await screen.findByRole("link", { name: "Sign in with Microsoft" });
+    expect(link).toHaveAttribute("href", "/api/auth/entra/login?next=%2F");
+    expect(screen.getByLabelText("Password")).toBeInTheDocument(); // password still available until Entra is live
+    expect(screen.queryByText(/Development sign-in/)).not.toBeInTheDocument();
+  });
+
+  it("hides the password form when only Microsoft sign-in is enabled", async () => {
+    mockApi({ "/auth/me": apiError(401, "Not signed in"), "/auth/providers": { password: false, entra: true, dev: false } });
+    renderApp("/login");
+    expect(await screen.findByRole("link", { name: "Sign in with Microsoft" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+  });
+
+  it("explains a refused Microsoft sign-in", async () => {
+    mockApi({ "/auth/me": apiError(401, "Not signed in"), "/auth/providers": { password: true, entra: true, dev: false } });
+    renderApp("/login?error=no_account");
+    expect(await screen.findByRole("alert")).toHaveTextContent("isn't linked to an attendance account yet. Ask HR");
+  });
+
+  it("signs in with the dev bypass when the backend enables it", async () => {
+    let signedIn = false;
+    const { calls } = mockApi({
+      "/auth/me": () => (signedIn ? me() : apiError(401, "Not signed in")),
+      "/auth/providers": { password: false, entra: false, dev: true },
+      "POST /auth/dev-login": () => {
+        signedIn = true;
+        return me();
+      },
+      ...employeeRoutes(),
+    });
+    renderApp("/login");
+    const user = userEvent.setup();
+    expect(await screen.findByText("Development sign-in (no password)")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Sign in as (email)"), "rahul.reddy@nexa.example");
+    await user.click(screen.getByRole("button", { name: "Dev sign-in" }));
+    expect(await screen.findByRole("heading", { name: /Good (morning|afternoon|evening), Rahul/ })).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/auth/dev-login")?.body).toEqual({ email: "rahul.reddy@nexa.example" });
+  });
 });
 
 describe("employee dashboard", () => {

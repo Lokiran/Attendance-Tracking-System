@@ -21,7 +21,7 @@ def _scalar(sql: str, **params):
 
 
 def test_upgrade_installs_extension_and_postgres_constraints(migrated):
-    assert current_revision(engine) == "0002"
+    assert current_revision(engine) == "0003"
     assert app_tables() <= set(inspect(engine).get_table_names())
     assert _scalar("SELECT extname FROM pg_extension WHERE extname = 'btree_gist'") == "btree_gist"
 
@@ -51,7 +51,7 @@ def test_downgrade_then_reupgrade(migrated):
     assert _scalar("SELECT count(*) FROM pg_constraint WHERE conname = 'ex_attendance_no_overlap'") == 0
 
     upgrade()
-    assert current_revision(engine) == "0002"
+    assert current_revision(engine) == "0003"
     assert _scalar("SELECT count(*) FROM pg_constraint WHERE conname = 'ex_attendance_no_overlap'") == 1
 
 
@@ -116,13 +116,13 @@ def test_migrated_check_constraints(employee_id):
 
 
 def test_0002_widens_source_check_in_place_and_keeps_exclusion_constraint(migrated):
-    assert current_revision(engine) == "0002"
+    assert current_revision(engine) == "0003"
     definition = _scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint "
                          "WHERE conname = 'ck_attendance_sessions_session_source'")
     assert "AUTO_WIFI" in definition and "AUTO_TEAMS" in definition and "SEED" in definition
     assert _scalar("SELECT count(*) FROM pg_constraint WHERE conname = 'ex_attendance_no_overlap'") == 1
     assert _scalar("SELECT data_type FROM information_schema.columns "
-                   "WHERE table_name = 'signals' AND column_name = 'seen_at'") == "timestamp with time zone"
+                   "WHERE table_name = 'wifi_events' AND column_name = 'ts_bucket'") == "timestamp with time zone"
 
 
 def test_0002_downgrade_to_0001_and_back(employee_id):
@@ -133,7 +133,7 @@ def test_0002_downgrade_to_0001_and_back(employee_id):
     assert "AUTO_WIFI" not in definition
     assert "signals" not in inspect(engine).get_table_names()
     upgrade()
-    assert current_revision(engine) == "0002"
+    assert current_revision(engine) == "0003"
 
 
 def test_0002_auto_session_respects_exclusion_constraint(employee_id):
@@ -144,3 +144,25 @@ def test_0002_auto_session_respects_exclusion_constraint(employee_id):
         with engine.begin() as conn:
             conn.execute(text(INSERT_SESSION.text.replace("'ADMIN'", "'AUTO_WIFI'")), auto)
     assert exc.value.orig.sqlstate == EXCLUSION_VIOLATION
+
+
+def test_0003_settings_defaults_checks_and_round_trip(migrated):
+    assert current_revision(engine) == "0003"
+    assert set(inspect(engine).get_table_names()) >= {"wifi_events", "presence_events", "attendance_daily",
+                                                      "attendance_daily_corrections"}
+    assert "signals" not in inspect(engine).get_table_names()
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO attendance_policy (id, min_present_minutes, count_incomplete_as_present, "
+                          "max_session_minutes, late_grace_minutes, correction_window_days, manager_can_approve, "
+                          "updated_at) VALUES (1, 0, false, 960, 15, 30, true, now()) ON CONFLICT DO NOTHING"))
+    assert _scalar("SELECT wfh_presence_states::text FROM attendance_policy") == '["Available", "Busy", "InAMeeting"]'
+    assert _scalar("SELECT gap_minutes FROM attendance_policy") == 30
+    with pytest.raises(IntegrityError) as exc, engine.begin() as conn:
+        conn.execute(text("UPDATE attendance_policy SET half_day_minutes = full_day_minutes + 1"))
+    assert exc.value.orig.sqlstate == "23514"
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM attendance_policy"))
+    downgrade("0002")
+    assert "signals" in inspect(engine).get_table_names()
+    upgrade()
+    assert current_revision(engine) == "0003"

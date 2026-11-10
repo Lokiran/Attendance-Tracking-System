@@ -92,6 +92,19 @@ class Settings(BaseSettings):
     login_ip_max_failures: int = 30
     trust_proxy_headers: bool = False
 
+    # Sign-in methods. Email/password stays available until Microsoft Entra ID is live, then turn it off.
+    password_login_enabled: bool = True
+    # Microsoft Entra ID (OIDC, authorization code + PKCE). Enabled when all four values are set.
+    entra_tenant_id: str = ""
+    entra_client_id: str = ""
+    entra_client_secret: str = ""
+    # Must point at the app's /api/auth/entra/callback on the origin the browser uses (e.g. through the
+    # Vite proxy in development: http://localhost:5173/api/auth/entra/callback).
+    entra_redirect_uri: str = ""
+    entra_authority: str = "https://login.microsoftonline.com"
+    # Local testing only: sign in as any active user by email, no password. Refused in production.
+    dev_login_enabled: bool = False
+
     max_report_days: int = 366
     log_level: str = "INFO"
 
@@ -132,7 +145,25 @@ class Settings(BaseSettings):
 
         if self.cookie_samesite == "none" and not self.secure_cookies:
             raise ValueError("COOKIE_SAMESITE=none requires secure cookies")
+
+        entra_values = (self.entra_tenant_id, self.entra_client_id, self.entra_client_secret, self.entra_redirect_uri)
+        if any(v.strip() for v in entra_values) and not all(v.strip() for v in entra_values):
+            raise ValueError("Microsoft Entra ID sign-in needs all of ENTRA_TENANT_ID, ENTRA_CLIENT_ID, "
+                             "ENTRA_CLIENT_SECRET and ENTRA_REDIRECT_URI (or none of them)")
+        if self.app_env == "production":
+            if self.dev_login_enabled:
+                raise ValueError("DEV_LOGIN_ENABLED must never be on in production")
+            if self.entra_enabled and not self.entra_redirect_uri.startswith("https://"):
+                raise ValueError("ENTRA_REDIRECT_URI must use https in production")
+        if not (self.password_login_enabled or self.entra_enabled or self.dev_login_enabled):
+            raise ValueError("No sign-in method is enabled: configure Microsoft Entra ID or set "
+                             "PASSWORD_LOGIN_ENABLED=true")
         return self
+
+    @property
+    def entra_enabled(self) -> bool:
+        return bool(self.entra_tenant_id and self.entra_client_id and self.entra_client_secret
+                    and self.entra_redirect_uri)
 
     @property
     def secure_cookies(self) -> bool:

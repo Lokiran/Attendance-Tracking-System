@@ -207,7 +207,7 @@ before auto-close and notifications; the payroll lock is needed before the payro
 ---
 
 ## After day one (deferred)
-- ⏸ Automatic attendance (Wi-Fi / Teams) — Phase 1 database work exists, switched off; plan in `auto-attendance-todo.md`
+- Automatic attendance (Wi-Fi / Teams): in progress, phase by phase; checklist in `TODO.md` (Phase 1 done)
 - ⏸ Geofencing or QR check-in
 - ⏸ Biometric / kiosk integration
 - ⏸ Payroll / HRMS API integration

@@ -19,28 +19,27 @@ class SessionSource(StrEnum):
     CORRECTION = "CORRECTION"
     ADMIN = "ADMIN"
     SEED = "SEED"
-    AUTO_WIFI = "AUTO_WIFI"    # created by the auto-attendance engine from office Wi-Fi signals
-    AUTO_TEAMS = "AUTO_TEAMS"  # created by the auto-attendance engine from Teams presence
-
-
-# Sources a person (or reviewer) produced; these always win over AUTO_* sessions.
-MANUAL_SOURCES = frozenset({SessionSource.WEB, SessionSource.ADMIN, SessionSource.CORRECTION})
-AUTO_SOURCES = frozenset({SessionSource.AUTO_WIFI, SessionSource.AUTO_TEAMS})
-
-
-class SignalSource(StrEnum):
-    WIFI = "WIFI"
-    TEAMS = "TEAMS"
-
-
-class WorkLocation(StrEnum):
-    OFFICE = "OFFICE"
-    WFH = "WFH"
-
-
-class AutoSource(StrEnum):
+    # Allowed by the database since migration 0002; automatic attendance now writes attendance_daily
+    # instead of sessions, so nothing creates these.
     AUTO_WIFI = "AUTO_WIFI"
     AUTO_TEAMS = "AUTO_TEAMS"
+
+
+class WifiEventType(StrEnum):
+    CONNECT = "CONNECT"
+    DISCONNECT = "DISCONNECT"
+    SEEN = "SEEN"  # periodic "still connected" (e.g. RADIUS interim update, controller poll)
+
+
+class DailyStatus(StrEnum):
+    """Status of an automatic attendance day (thresholds come from settings)."""
+    PRESENT = "PRESENT"      # office (or WFH) minutes >= full-day minutes
+    HALF_DAY = "HALF_DAY"    # >= half-day minutes
+    ABSENT = "ABSENT"        # scheduled working day, below half-day minutes
+    WFH = "WFH"              # no office Wi-Fi; Teams presence counted as working from home
+    HOLIDAY = "HOLIDAY"
+    WEEKEND = "WEEKEND"
+    NO_DATA = "NO_DATA"      # a collector was down; never shown as Absent
 
 
 class DayStatus(StrEnum):

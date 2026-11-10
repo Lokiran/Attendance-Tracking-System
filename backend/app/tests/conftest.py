@@ -39,6 +39,7 @@ from app.db.session import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import AttendancePolicy, Department, Role, User, WorkSchedule  # noqa: E402
 from app.services import attendance_data, record_cache  # noqa: E402
+from app.tests.migration_utils import drop_leftover_tables  # noqa: E402
 
 PASSWORD = "Str0ngPassw0rd!"
 IST = get_settings().tz
@@ -94,6 +95,7 @@ def _fresh_db():
         with engine.begin() as conn:
             conn.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
     else:
+        drop_leftover_tables(engine)
         Base.metadata.drop_all(engine)
         Base.metadata.create_all(engine)
     # Fresh databases reuse ids and the frozen clock reuses timestamps, so cached results from one

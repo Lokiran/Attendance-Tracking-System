@@ -207,15 +207,19 @@ pending, approved and rejected corrections. All dates are relative to the curren
 
 | Name | Role | Email | Reports to |
 |---|---|---|---|
-| System Administrator | ADMIN (not counted in statistics) | value of `SEED_ADMIN_EMAIL` | — |
+| System Administrator | HR admin (`ADMIN`, not counted in statistics) | value of `SEED_ADMIN_EMAIL` | — |
 | Vikram Desai | MANAGER, Operations (COO) | vikram.desai@nexa.example | — |
 | Priya Sharma | MANAGER, AI Engineering | priya.sharma@nexa.example | Vikram Desai |
 | Anil Kumar | MANAGER, Software Engineering | anil.kumar@nexa.example | Vikram Desai |
 | Meera Nair | MANAGER, Human Resources | meera.nair@nexa.example | — |
-| Rahul Reddy, Sneha Rao, Farah Khan | EMPLOYEE, AI Engineering | firstname.lastname@nexa.example | Priya Sharma |
-| Arjun Kumar, Ananya Sharma, Rohan Gupta (night shift) | EMPLOYEE, Software Engineering | … | Anil Kumar |
+| Rahul Reddy, Sneha Rao, Farah Khan, Neha Joshi | EMPLOYEE, AI Engineering | firstname.lastname@nexa.example | Priya Sharma |
+| Arjun Kumar, Ananya Sharma, Rohan Gupta (night shift), Vivek Singh | EMPLOYEE, Software Engineering | … | Anil Kumar |
 | Divya Menon | EMPLOYEE, Human Resources | divya.menon@nexa.example | Meera Nair |
 | Kiran Patel | EMPLOYEE, Operations (Mon–Sat schedule) | kiran.patel@nexa.example | Vikram Desai |
+
+That is 10 employees. Every tracked person also gets a demo device MAC (`users.wifi_identity`, in the
+locally administered `02:a7:5e:…` range) and a demo Entra object id (`users.graph_user_id`) for the
+automatic-attendance collectors. The seed fills these only where they are empty.
 
 Passwords:
 * The admin uses `SEED_ADMIN_PASSWORD`; everyone else uses `SEED_DEMO_PASSWORD`, both read from
@@ -230,6 +234,31 @@ the password is prompted, not passed on the command line:
 
 ```powershell
 python -m app.cli create-admin --email admin@yourcompany.com --name "Jane Doe" --code ADM001
+```
+
+## Signing in
+
+Three methods, each switched on by configuration. The login page shows only the enabled ones
+(`GET /api/auth/providers`).
+
+| Method | Turn on with | Use |
+|---|---|---|
+| **Microsoft Entra ID** | `ENTRA_*` variables | The target for everyone. People must already exist in the app (HR adds them); the first Microsoft sign-in links their Entra object id, after that they are matched by it. Roles stay managed in the app |
+| Email + password | `PASSWORD_LOGIN_ENABLED=true` (default) | Until the Entra app registration is live |
+| Dev bypass | `DEV_LOGIN_ENABLED=true` | Local testing: pick any active user by email, no password. Audited as method `dev`; impossible in production |
+
+Entra app registration (done by IT): platform **Web**, redirect URI
+`https://<your host>/api/auth/entra/callback` (development through the Vite proxy:
+`http://localhost:5173/api/auth/entra/callback`), a client secret, and the delegated scopes
+`openid profile email`. The app checks the ID token's signature against the tenant's published keys,
+plus issuer, audience, expiry, nonce and tenant. It uses PKCE and a short-lived signed cookie for
+`state` and `nonce`.
+
+Try the dev bypass locally:
+
+```powershell
+$env:DEV_LOGIN_ENABLED = "true"
+powershell -ExecutionPolicy Bypass -File scripts\run-local-sqlite.ps1
 ```
 
 ## Environment variables
@@ -251,6 +280,10 @@ over the file. Templates: `backend\.env.example` (PostgreSQL) and `backend\.env.
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated |
 | `LOGIN_MAX_FAILURES` / `LOGIN_WINDOW_MINUTES` | 5 / 15 | Brute-force throttling |
 | `TRUST_PROXY_HEADERS` | `false` | Only behind a trusted reverse proxy |
+| `PASSWORD_LOGIN_ENABLED` | `true` | Email/password sign-in. Turn off once Microsoft sign-in is live |
+| `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` / `ENTRA_CLIENT_SECRET` / `ENTRA_REDIRECT_URI` | — | Microsoft Entra ID sign-in; set all four or none. See [Signing in](#signing-in) |
+| `ENTRA_AUTHORITY` | `https://login.microsoftonline.com` | Only for sovereign clouds |
+| `DEV_LOGIN_ENABLED` | `false` | Local testing only: sign in as any active user without a password. Refused when `APP_ENV=production` |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` / `SEED_DEMO_PASSWORD` | — | Demo seed only |
 | `TEST_DATABASE_URL` | — | Optional PostgreSQL database for the test suite (it is wiped; name must contain `test`) |
 

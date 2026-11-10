@@ -1,6 +1,6 @@
 /** Display helpers. All timestamps are rendered in the office timezone reported by the API. */
 
-import type { DayStatus } from "./types";
+import type { DayStatus, Role } from "./types";
 
 let officeTz = "Asia/Kolkata";
 export function setOfficeTimezone(tz: string) {
@@ -94,3 +94,6 @@ export function titleCase(s: string): string {
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 }
+
+/** Display names for roles. ADMIN is the HR admin (one per organisation). */
+export const ROLE_LABEL: Record<Role, string> = { EMPLOYEE: "Employee", MANAGER: "Manager", ADMIN: "HR admin" };

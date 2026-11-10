@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { api } from "@/lib/api";
-import { titleCase } from "@/lib/format";
+import { ROLE_LABEL } from "@/lib/format";
 import type { HierarchyDepartment, HierarchyNode } from "@/lib/types";
 
 function matches(n: HierarchyNode, q: string): boolean {
@@ -59,7 +59,7 @@ function Node({ node, depth, q, expandAll }: { node: HierarchyNode; depth: numbe
           {node.full_name}
         </Link>
         <span className="hidden truncate text-xs text-ink-3 sm:inline">
-          {node.employee_code} · {node.job_title ?? titleCase(node.role)}
+          {node.employee_code} · {node.job_title ?? ROLE_LABEL[node.role]}
         </span>
         {isManager && (
           <Link to={"/admin/managers/" + node.id} className="ml-auto whitespace-nowrap rounded-md border border-line px-2 py-0.5 text-[11px] font-medium text-brand-text hover:bg-surface">

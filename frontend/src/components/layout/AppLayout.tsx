@@ -30,7 +30,7 @@ import { Avatar } from "@/components/ui/Misc";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { todayInOffice } from "@/lib/dates";
-import { formatDate, titleCase } from "@/lib/format";
+import { formatDate, ROLE_LABEL } from "@/lib/format";
 import type { Role } from "@/lib/types";
 
 interface NavItem {
@@ -176,7 +176,7 @@ function ProfileMenu() {
         <Avatar name={user.full_name} size="sm" />
         <span className="hidden text-left leading-tight sm:block">
           <span className="block text-sm font-medium text-on-secondary">{user.full_name}</span>
-          <span className="block text-[11px] text-on-secondary-muted">{titleCase(user.role)}</span>
+          <span className="block text-[11px] text-on-secondary-muted">{ROLE_LABEL[user.role]}</span>
         </span>
       </button>
       {open && (

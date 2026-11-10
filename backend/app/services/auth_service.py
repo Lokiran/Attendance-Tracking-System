@@ -69,7 +69,12 @@ def login(db: Session, email: str, password: str, ctx: RequestContext) -> LoginR
 
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(password)
+    db.add(LoginAttempt(email=email, ip_address=ctx.ip_address, succeeded=True))
+    return start_session(db, user, ctx, method="password")
 
+
+def start_session(db: Session, user: User, ctx: RequestContext, *, method: str) -> LoginResult:
+    """Create a server-side session for an already authenticated, active user (any sign-in method)."""
     s = get_settings()
     now = clock.utcnow()
     token = generate_token()
@@ -79,8 +84,8 @@ def login(db: Session, email: str, password: str, ctx: RequestContext) -> LoginR
         ip_address=ctx.ip_address, user_agent=(ctx.user_agent or "")[:255] or None,
     )
     db.add(session)
-    db.add(LoginAttempt(email=email, ip_address=ctx.ip_address, succeeded=True))
-    audit.record(db, actor_id=user.id, action="LOGIN", entity_type="user", entity_id=user.id, ctx=ctx)
+    audit.record(db, actor_id=user.id, action="LOGIN", entity_type="user", entity_id=user.id,
+                 after={"method": method}, ctx=ctx)
     db.commit()
     return LoginResult(user=user, token=token, session=session)
 

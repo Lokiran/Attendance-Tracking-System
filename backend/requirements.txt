@@ -10,6 +10,9 @@ psycopg[binary]==3.3.6
 argon2-cffi==25.1.0
 tzdata==2026.5
 python-dotenv==1.2.4
+# Microsoft Entra ID sign-in: ID-token signature validation (RS256 via the tenant's published keys)
+PyJWT[crypto]==2.10.1
+cryptography==50.0.2
 
 # Testing
 pytest==9.1.1

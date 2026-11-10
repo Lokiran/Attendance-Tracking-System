@@ -7,6 +7,7 @@ from app.core import clock
 from app.db.base import Base, TimestampMixin
 from app.db.types import UTCDateTime
 
+DEFAULT_WFH_PRESENCE_STATES = ("Available", "Busy", "InAMeeting")
 
 class WorkSchedule(TimestampMixin, Base):
     """Working pattern. Resolution order for a day: employee-specific > department > organisation default
@@ -55,6 +56,13 @@ class AttendancePolicy(Base):
         CheckConstraint("id = 1", name="singleton"),
         CheckConstraint("min_present_minutes >= 0", name="min_present_non_negative"),
         CheckConstraint("max_session_minutes BETWEEN 60 AND 1440", name="max_session_range"),
+        CheckConstraint("gap_minutes BETWEEN 1 AND 240", name="gap_minutes_range"),
+        CheckConstraint("full_day_minutes BETWEEN 1 AND 1440", name="full_day_minutes_range"),
+        CheckConstraint("half_day_minutes >= 0 AND half_day_minutes <= full_day_minutes", name="half_day_minutes_range"),
+        CheckConstraint("wifi_poll_minutes BETWEEN 1 AND 60 AND presence_poll_minutes BETWEEN 1 AND 60",
+                        name="poll_minutes_range"),
+        CheckConstraint("no_data_alert_minutes BETWEEN 5 AND 1440", name="no_data_alert_minutes_range"),
+        CheckConstraint("raw_retention_days BETWEEN 7 AND 3650", name="raw_retention_days_range"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
@@ -71,6 +79,24 @@ class AttendancePolicy(Base):
     auto_attendance_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(),
                                                           nullable=False)
     auto_shadow_mode: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
+    # Automatic attendance rules (migration 0003). Every job reads these; nothing is hard-coded.
+    # Wi-Fi events closer together than this belong to one office session (a longer gap splits it).
+    gap_minutes: Mapped[int] = mapped_column(Integer, default=30, server_default=text("30"), nullable=False)
+    # Worked minutes (office, or WFH when there was no office Wi-Fi) for Present and for Half-day.
+    full_day_minutes: Mapped[int] = mapped_column(Integer, default=480, server_default=text("480"), nullable=False)
+    half_day_minutes: Mapped[int] = mapped_column(Integer, default=240, server_default=text("240"), nullable=False)
+    # Collector intervals; each is also the bucket length of that source's events table.
+    wifi_poll_minutes: Mapped[int] = mapped_column(Integer, default=3, server_default=text("3"), nullable=False)
+    presence_poll_minutes: Mapped[int] = mapped_column(Integer, default=5, server_default=text("5"), nullable=False)
+    # A collector with no events for this long is "down": affected days become No data, never Absent.
+    no_data_alert_minutes: Mapped[int] = mapped_column(Integer, default=15, server_default=text("15"), nullable=False)
+    # Raw Wi-Fi / presence events older than this are purged; daily summaries are kept.
+    raw_retention_days: Mapped[int] = mapped_column(Integer, default=90, server_default=text("90"), nullable=False)
+    # Teams availability or activity values that count as working from home.
+    wfh_presence_states: Mapped[list[str]] = mapped_column(
+        JSON, default=lambda: list(DEFAULT_WFH_PRESENCE_STATES),
+        server_default=text("'[\"Available\", \"Busy\", \"InAMeeting\"]'"), nullable=False,
+    )
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: clock.utcnow(),
                                                  onupdate=lambda: clock.utcnow(), nullable=False)
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

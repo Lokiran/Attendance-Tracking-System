@@ -18,7 +18,7 @@ import { useToast } from "@/components/ui/Toast";
 import { useUrlState } from "@/hooks/useUrlState";
 import { api } from "@/lib/api";
 import { todayInOffice } from "@/lib/dates";
-import { formatDate, titleCase } from "@/lib/format";
+import { formatDate, ROLE_LABEL, titleCase } from "@/lib/format";
 import { qk } from "@/lib/queries";
 import type { AdminUser, Department, Page, Role } from "@/lib/types";
 
@@ -207,7 +207,7 @@ export function EmployeesAdmin() {
   const columns: Column<AdminUser>[] = [
     { key: "name", header: "Name", cell: (u) => <Link to={"/people/" + u.id} className="font-medium hover:underline">{u.full_name}<span className="block text-xs font-normal text-ink-3">{u.email}</span></Link> },
     { key: "code", header: "Employee ID", cell: (u) => <span className="tabular">{u.employee_code}</span> },
-    { key: "role", header: "Role", cell: (u) => titleCase(u.role) },
+    { key: "role", header: "Role", cell: (u) => ROLE_LABEL[u.role] },
     { key: "dept", header: "Department", cell: (u) => u.department?.name ?? "—" },
     { key: "mgr", header: "Manager", cell: (u) => u.manager?.full_name ?? "—" },
     { key: "joined", header: "Joined", cell: (u) => formatDate(u.date_joined) },

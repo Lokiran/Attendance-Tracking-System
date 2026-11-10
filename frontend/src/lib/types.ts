@@ -40,6 +40,13 @@ export interface Profile extends Brief {
   attendance_tracked: boolean;
 }
 
+/** Sign-in methods the backend has enabled (GET /auth/providers). */
+export interface AuthProviders {
+  password: boolean;
+  entra: boolean;
+  dev: boolean;
+}
+
 export interface MeResponse {
   user: Profile;
   csrf_token: string;

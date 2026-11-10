@@ -126,7 +126,7 @@ def test_seed_is_repeatable(frozen, db, monkeypatch):
     sessions_after_first = db.scalar(select(func.count()).select_from(AttendanceSession))
     assert first["sessions_created"] > 300
     seed.run(db)
-    assert db.scalar(select(func.count()).select_from(User)) == users_after_first == 13
+    assert db.scalar(select(func.count()).select_from(User)) == users_after_first == 15
     assert db.scalar(select(func.count()).select_from(AttendanceSession)) == sessions_after_first
     assert db.scalar(select(func.count()).select_from(AttendanceSession).where(
         AttendanceSession.status == SessionStatus.MISSING_CHECKOUT)) > 0
