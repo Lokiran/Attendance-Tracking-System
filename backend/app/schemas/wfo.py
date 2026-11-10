@@ -41,6 +41,8 @@ class WfoSummaryOut(BaseModel):
     shortfall_days: int
     wfo_percentage: float | None
     compliance: str  # COMPLIANT | NON_COMPLIANT
+    # MET (at or above required_days) | NEAR (up to 3 days short) | BELOW: green / orange / red in the UI
+    wfo_band: str = "MET"
 
 
 class WfoRangeSummary(WfoSummaryOut):
@@ -96,6 +98,9 @@ class WfoTotals(BaseModel):
     wfo_percentage: float | None
     compliant: int
     non_compliant: int
+    band_met: int = 0     # WFO days at or above the requirement (green)
+    band_near: int = 0    # up to 3 days short (orange)
+    band_below: int = 0   # more than 3 days short (red)
 
 
 class TeamWfoOut(BaseModel):

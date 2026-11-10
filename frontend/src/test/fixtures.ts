@@ -22,6 +22,12 @@ export const summary: Summary = {
   average_net_minutes: 480,
   attendance_percentage: 77.8,
   late_days: 2,
+  wfo: {
+    working_days: 17, standard_days: 18, wfo_days: 14, wfh_days: 3, office_days_below_minimum: 0, leave_days: 1,
+    holiday_days: 0, weekoff_days: 7, required_days: 12, shortfall_days: 0, wfo_percentage: 82.4,
+    compliance: "COMPLIANT", wfo_band: "MET",
+    weekly_wfo_breakdown: [{ week_start: "2026-10-05", week_end: "2026-10-11", label: "05 Oct – 11 Oct", working_days: 5, wfo_days: 4, required: 3, status: "MET", shortfall: 0 }],
+  },
 };
 
 export function day(date: string, overrides: Partial<DayRecord> = {}): DayRecord {

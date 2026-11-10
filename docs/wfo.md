@@ -138,6 +138,22 @@ The existing `GET /api/attendance/employees/{id}/summary` now also returns a `wf
 
 Sample files: `samples/` (see `samples/README.md`).
 
+## WFO status colours
+
+Every WFO summary carries `wfo_band`, from the month's WFO days against `required_days` (12 a month by
+default, prorated for partial months and leave; `wfo_rules.wfo_band`):
+
+| Band | Rule | Shown as |
+|---|---|---|
+| `MET` | WFO days at or above the requirement | green, "On target" |
+| `NEAR` | up to 3 days short (`WFO_NEAR_DAYS`) | amber, "Close" |
+| `BELOW` | more than 3 days short | red, "Below target" |
+
+The colours are the status tokens `--good`, `--warning` and `--critical`, always with an icon and a label.
+The employee dashboard, the team / organisation tables, the per-person chart, the organisation totals
+(people per band) and the Excel export ("WFO status") use it. Weekly bars use the same colours per week
+(met, one day short, more). Compliance (weekly and monthly targets) is unchanged and shown separately.
+
 ## Assumptions
 
 * **Leave** exists only from imported files or Admin overrides. Leave requests stay removed (decision of

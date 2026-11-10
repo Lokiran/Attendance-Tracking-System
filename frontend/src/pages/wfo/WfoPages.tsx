@@ -16,13 +16,17 @@ import { PageSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { CardGrid, SummaryCard } from "@/components/ui/SummaryCard";
 import {
+  BAND_META,
+  bandOf,
   ComplianceBadge,
   MODE_META,
   MonthPicker,
   OverrideDialog,
   PolicyLine,
   WeeklyProgress,
+  WFO_NEAR_DAYS,
   WfoCalendar,
+  WfoDaysCell,
   WfoDonut,
   WfoKpis,
 } from "@/components/wfo/WfoParts";
@@ -102,14 +106,33 @@ export function MemberWfoPage() {
   );
 }
 
+function BandCounts({ met, near, below }: { met: number; near: number; below: number }) {
+  return (
+    <span className="flex items-center gap-3 text-xl">
+      {([["MET", met], ["NEAR", near], ["BELOW", below]] as const).map(([b, n]) => {
+        const { label, color, icon: Icon } = BAND_META[b];
+        return (
+          <span key={b} className="inline-flex items-center gap-1" title={label}>
+            <Icon className="size-4" style={{ color }} aria-label={label} />
+            <span className="tabular">{n}</span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 function TotalsCards({ totals, loading }: { totals?: WfoTotals; loading: boolean }) {
   return (
     <CardGrid cols={4}>
       <SummaryCard label="People" icon={<Users className="size-4" />} loading={loading} value={totals?.headcount} />
       <SummaryCard label="Overall WFO %" icon={<Gauge className="size-4" />} loading={loading} value={formatPercent(totals?.wfo_percentage)}
         hint={totals && `${totals.wfo_days} WFO of ${totals.working_days} working days`} />
-      <SummaryCard label="Compliant" icon={<UserCheck className="size-4" />} loading={loading} value={totals?.compliant} />
-      <SummaryCard label="Non-compliant" icon={<UserX className="size-4" />} loading={loading} value={totals?.non_compliant} />
+      <SummaryCard label="WFO days by person" icon={<UserCheck className="size-4" />} loading={loading}
+        value={totals && <BandCounts met={totals.band_met ?? 0} near={totals.band_near ?? 0} below={totals.band_below ?? 0} />}
+        hint={`Green: at or above required · amber: up to ${WFO_NEAR_DAYS} short · red: more`} />
+      <SummaryCard label="Compliant (weekly + monthly)" icon={<UserX className="size-4" />} loading={loading} value={totals?.compliant}
+        hint={totals && `${totals.non_compliant} not compliant`} />
     </CardGrid>
   );
 }
@@ -127,8 +150,10 @@ function MembersChart({ rows, policyDays, link }: { rows: WfoRow[]; policyDays: 
       subtitle={rows.length > WFO_LIMIT ? `The ${WFO_LIMIT} lowest of ${rows.length}, against the policy line` : "Lowest first, against the policy line"}
       isEmpty={!rows.length}
       height={Math.max(200, data.length * 28 + 30)}
-      legend={<Legend items={[{ label: "WFO days", color: MODE_META.OFFICE.color }, { label: `Policy: ${policyDays} days`, color: "var(--text-2)", dashed: true }]} />}
-      table={{ columns: ["Name", "WFO days", "Required (prorated)", "Compliance"], rows: sorted.map((r) => [r.employee.full_name, r.wfo_days, r.required_days, r.compliance === "COMPLIANT" ? "Compliant" : "Non-compliant"]) }}
+      legend={<Legend items={[
+        ...(["MET", "NEAR", "BELOW"] as const).map((b) => ({ label: b === "NEAR" ? `Close (≤${WFO_NEAR_DAYS} short)` : BAND_META[b].label, color: BAND_META[b].color })),
+        { label: `Policy: ${policyDays} days`, color: "var(--text-2)", dashed: true }]} />}
+      table={{ columns: ["Name", "WFO days", "Required (prorated)", "Status", "Compliance"], rows: sorted.map((r) => [r.employee.full_name, r.wfo_days, r.required_days, BAND_META[bandOf(r.wfo_days, r.required_days, r.wfo_band)].label, r.compliance === "COMPLIANT" ? "Compliant" : "Non-compliant"]) }}
     >
       <ResponsiveContainer>
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 40, bottom: 0, left: 8 }}>
@@ -144,7 +169,7 @@ function MembersChart({ rows, policyDays, link }: { rows: WfoRow[]; policyDays: 
           ) : null} />
           <ReferenceLine x={policyDays} stroke="var(--text-2)" strokeDasharray="4 4" label={{ value: `${policyDays}`, position: "top", fill: "var(--text-2)", fontSize: 11 }} />
           <Bar dataKey="wfo" name="WFO days" radius={[0, 4, 4, 0]} maxBarSize={16} cursor="pointer" onClick={(d: any) => d?.payload?.row && navigate(link(d.payload.row))}>
-            {data.map((d) => <Cell key={d.name} fill={MODE_META.OFFICE.color} />)}
+            {data.map((d) => <Cell key={d.name} fill={BAND_META[bandOf(d.wfo, d.required, d.row.wfo_band)].color} stroke="var(--surface)" strokeWidth={2} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -174,7 +199,7 @@ function rowColumns(link: (r: WfoRow) => string, withManager = false): Column<Wf
   return [
     { key: "name", header: "Name", sortable: true, cell: (r) => <Link to={link(r)} className="font-medium text-ink hover:text-brand-text hover:underline">{r.employee.full_name}<span className="block text-xs font-normal text-ink-3">{r.employee.employee_code}</span></Link> },
     ...(withManager ? [{ key: "manager", header: "Manager", cell: (r: WfoRow) => r.employee.manager_name ?? "—" }] : []),
-    { key: "wfo_days", header: "WFO days", sortable: true, align: "right", cell: (r) => <span>{r.wfo_days}<span className="text-ink-3"> / {r.required_days}</span></span> },
+    { key: "wfo_days", header: "WFO days", sortable: true, align: "right", cell: (r) => <WfoDaysCell wfo={r.wfo_days} required={r.required_days} band={r.wfo_band} /> },
     { key: "wfh", header: "WFH days", align: "right", cell: (r) => r.wfh_days },
     { key: "wfo_percentage", header: "WFO %", sortable: true, align: "right", cell: (r) => formatPercent(r.wfo_percentage) },
     { key: "shortfall_days", header: "Shortfall", sortable: true, align: "right", cell: (r) => r.shortfall_days || "—" },
@@ -297,7 +322,7 @@ export function OrgWfoPage() {
                             <tr key={r.employee.id} className="border-b border-line bg-surface-2/50">
                               <td className="py-2 pl-11 pr-4"><Link to={link(r)} className="text-ink hover:text-brand-text hover:underline">{r.employee.full_name}</Link><span className="ml-2 text-xs text-ink-3">{r.employee.employee_code}</span></td>
                               <td className="px-4 py-2 text-right text-xs text-ink-3">{r.employee.department_name ?? ""}</td>
-                              <td className="tabular px-4 py-2 text-right">{r.wfo_days}<span className="text-ink-3"> / {r.required_days}</span></td>
+                              <td className="px-4 py-2 text-right"><WfoDaysCell wfo={r.wfo_days} required={r.required_days} band={r.wfo_band} /></td>
                               <td className="tabular px-4 py-2 text-right">{formatPercent(r.wfo_percentage)}</td>
                               <td className="px-4 py-2"><ComplianceBadge value={r.compliance} /></td>
                             </tr>

@@ -108,9 +108,25 @@ describe("employee dashboard", () => {
     expect(screen.getByText("EMP001")).toBeInTheDocument();
     expect(screen.getAllByText("Priya Sharma").length).toBeGreaterThan(0);
     expect(await screen.findByText("77.8%")).toBeInTheDocument();
-    expect(screen.getByText(formatMinutes(6720))).toBeInTheDocument();
-    expect(screen.getAllByText(formatMinutes(480)).length).toBeGreaterThan(1); // avg per day and the shift
-    expect(screen.getByText("exactly the shift hours on 14 days with hours")).toBeInTheDocument();
+    // Office hours panel: required hours and the average in office
+    expect(screen.getByText(formatMinutes(8640))).toBeInTheDocument();
+    expect(screen.getByText("18 days × 8h 00m shift")).toBeInTheDocument();
+    expect(screen.getByText("Average in office")).toBeInTheDocument();
+    expect(screen.getByText("per day · target 8h 00m")).toBeInTheDocument();
+    // WFO panel: 14 of 12 -> green "On target"
+    expect(screen.getByText("of 12 required days")).toBeInTheDocument();
+    expect(screen.getByText("On target")).toBeInTheDocument();
+    expect(screen.getByText("2 days above the 12-day minimum")).toBeInTheDocument();
+  });
+
+  it("colours WFO days amber when close and red when far below the requirement", async () => {
+    for (const [wfo, label, message] of [[10, "Close", "2 more office days needed to reach 12"], [6, "Below target", "6 more office days needed to reach 12"]] as const) {
+      mockApi({ "/auth/me": me(), ...employeeRoutes(), "/attendance/employees/5/summary": { ...summary, wfo: { ...summary.wfo!, wfo_days: wfo, wfo_band: undefined } } });
+      const { unmount } = renderApp("/");
+      expect(await screen.findByText(label)).toBeInTheDocument();
+      expect(screen.getByText(message)).toBeInTheDocument();
+      unmount();
+    }
   });
 
   it("has no check-in, check-out or correction requests", async () => {
@@ -131,8 +147,9 @@ describe("employee dashboard", () => {
     });
     renderApp("/");
     expect(await screen.findByText("Not recorded")).toBeInTheDocument();
-    expect(screen.getByText("the timesheet has no hours for these days")).toBeInTheDocument();
+    expect(screen.getByText(/This timesheet lists the days only/)).toBeInTheDocument();
     expect(screen.queryByText(/short of the shift hours/)).not.toBeInTheDocument();
+    expect(screen.getByText(formatMinutes(8640))).toBeInTheDocument(); // required hours are always known
   });
 
   it("renders the attendance history table with statuses", async () => {

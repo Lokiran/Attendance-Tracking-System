@@ -16,7 +16,7 @@ from app.models import User
 from app.services import wfo
 from app.services.policy import get_policy
 from app.services.scope import resolve_scope
-from app.services.wfo_rules import PolicyDay, is_wfo_day
+from app.services.wfo_rules import PolicyDay, is_wfo_day, wfo_band
 
 HEADER_FILL = PatternFill("solid", fgColor="E8EDF5")  # the app's secondary-soft table header tint
 RISKY = ("=", "+", "-", "@", "\t", "\r")
@@ -62,7 +62,8 @@ def build(db: Session, admin: User, month: str | None, manager_id: int | None, d
                 e.employee_code, e.full_name, e.department.name if e.department else "",
                 e.manager.full_name if e.manager else "", s.working_days, s.wfo_days, s.wfh_days, s.leave_days,
                 s.wfo_percentage if s.wfo_percentage is not None else "", s.required_days, s.shortfall_days,
-                s.compliance,
+                s.compliance, {"MET": "Met", "NEAR": "Close (up to 3 days short)", "BELOW": "Below"}[
+                    wfo_band(s.wfo_days, s.required_days)],
             ])
             for c in ed.days:
                 if c.date >= today or not start <= c.date <= end:
@@ -76,7 +77,8 @@ def build(db: Session, admin: User, month: str | None, manager_id: int | None, d
                 ])
     wb = Workbook()
     _sheet(wb, "Summary", ["Employee ID", "Name", "Department", "Manager", "Working days", "WFO days", "WFH days",
-                           "Leave days", "WFO %", "Required WFO days", "Shortfall days", "Compliance"],
+                           "Leave days", "WFO %", "Required WFO days", "Shortfall days", "Compliance",
+                           "WFO status"],
            summary_rows, first=True)
     daily = _sheet(wb, "Daily", ["Employee ID", "Name", "Date", "Work mode", "Source", "WFO day", "Office hours",
                                  "WFH hours", "Conflicts"], daily_rows)

@@ -13,7 +13,7 @@ import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
 import { formatDate, formatMinutes, formatPercent } from "@/lib/format";
 import { useInvalidateAttendance } from "@/lib/queries";
-import type { Compliance, EmployeeWfo, WfoDay, WfoPolicy, WfoSummary, WfoWeek, WorkMode } from "@/lib/types";
+import type { Compliance, EmployeeWfo, WfoBand, WfoDay, WfoPolicy, WfoSummary, WfoWeek, WorkMode } from "@/lib/types";
 
 /**
  * Work-mode colours reuse the validated chart series (dataviz validator: light and dark pass; the light
@@ -26,6 +26,69 @@ export const MODE_META: Record<WorkMode, { label: string; short: string; color: 
   HOLIDAY: { label: "Holiday", short: "Holiday", color: "var(--st-holiday)" },
   WEEKOFF: { label: "Weekly off", short: "Off", color: "var(--st-off)" },
 };
+
+/** Up to this many WFO days short of the requirement is "close" (orange); more is "below" (red). Same rule as the
+ *  backend (wfo_rules.WFO_NEAR_DAYS). */
+export const WFO_NEAR_DAYS = 3;
+
+/** Status colours (good / warning / critical), always shown with an icon and a label, never colour alone. Amber is
+ *  the "orange" band: it passes the palette validator next to the red, where a true orange does not. */
+export const BAND_META: Record<WfoBand, { label: string; color: string; icon: typeof CheckCircle2 }> = {
+  MET: { label: "On target", color: "var(--good)", icon: CheckCircle2 },
+  NEAR: { label: "Close", color: "var(--warning)", icon: AlertTriangle },
+  BELOW: { label: "Below target", color: "var(--critical)", icon: XCircle },
+};
+
+export function bandOf(wfoDays: number, requiredDays: number, band?: WfoBand): WfoBand {
+  if (band) return band;
+  if (wfoDays >= requiredDays) return "MET";
+  return wfoDays >= requiredDays - WFO_NEAR_DAYS ? "NEAR" : "BELOW";
+}
+
+export function bandMessage(wfoDays: number, requiredDays: number): string {
+  const diff = wfoDays - requiredDays;
+  if (diff > 0) return `${diff} day${diff === 1 ? "" : "s"} above the ${requiredDays}-day minimum`;
+  if (diff === 0) return `Exactly the ${requiredDays}-day minimum`;
+  return `${-diff} more office day${diff === -1 ? "" : "s"} needed to reach ${requiredDays}`;
+}
+
+export function WfoBandPill({ band, className }: { band: WfoBand; className?: string }) {
+  const { label, color, icon: Icon } = BAND_META[band];
+  return (
+    <span className={clsx("inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-line bg-surface px-2 py-0.5 text-xs font-medium text-ink", className)}>
+      <Icon className="size-3.5" style={{ color }} aria-hidden />
+      {label}
+    </span>
+  );
+}
+
+/** "14 / 12" with a status dot: tables and lists. */
+export function WfoDaysCell({ wfo, required, band }: { wfo: number; required: number; band?: WfoBand }) {
+  const b = bandOf(wfo, required, band);
+  const { label, color, icon: Icon } = BAND_META[b];
+  return (
+    <span className="inline-flex items-center justify-end gap-1.5" title={`${label}: ${bandMessage(wfo, required)}`}>
+      <Icon className="size-3.5" style={{ color }} aria-label={label} />
+      <span className="tabular font-medium text-ink">{wfo}</span>
+      <span className="tabular text-ink-3">/ {required}</span>
+    </span>
+  );
+}
+
+/** Progress toward the WFO requirement, filled in the band colour, with the requirement marked. */
+export function WfoTargetBar({ wfo, required, band, label }: { wfo: number; required: number; band?: WfoBand; label: string }) {
+  const b = bandOf(wfo, required, band);
+  const scale = Math.max(required, wfo, 1);
+  return (
+    <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-label={label}
+      aria-valuemin={0} aria-valuemax={required} aria-valuenow={Math.min(wfo, required)}>
+      <div className="h-full rounded-full transition-[width]" style={{ width: `${(wfo / scale) * 100}%`, background: BAND_META[b].color }} />
+      {required > 0 && wfo > required && (
+        <span aria-hidden className="absolute inset-y-0 w-0.5 bg-surface" style={{ left: `${(required / scale) * 100}%` }} />
+      )}
+    </div>
+  );
+}
 
 export const SOURCE_LABEL: Record<string, string> = {
   MANUAL_OVERRIDE: "Admin override", UPLOAD_COLUMN: "Imported file", BADGE: "Badge / swipe", WIFI: "Office Wi-Fi",
@@ -61,8 +124,13 @@ export function ComplianceBadge({ value }: { value: Compliance }) {
 export function WfoKpis({ summary: s, policy, loading }: { summary?: WfoSummary; policy?: WfoPolicy; loading?: boolean }) {
   return (
     <CardGrid cols={6}>
-      <SummaryCard label="WFO days" icon={<Building2 className="size-4" />} loading={loading} value={s?.wfo_days}
-        hint={s && policy && `${s.office_days_below_minimum ? `+${s.office_days_below_minimum} under ${hours(policy.min_office_minutes)} · ` : ""}needs ${s.required_days}`} />
+      <SummaryCard label="WFO days" icon={<Building2 className="size-4" />} loading={loading}
+        value={s && <span className="flex items-center gap-2">{s.wfo_days}<span className="text-sm font-normal text-ink-3">/ {s.required_days}</span>
+          <WfoBandPill band={bandOf(s.wfo_days, s.required_days, s.wfo_band)} className="ml-auto" /></span>}
+        hint={s && policy && <>
+          <WfoTargetBar wfo={s.wfo_days} required={s.required_days} band={s.wfo_band} label={`WFO days: ${s.wfo_days} of ${s.required_days}`} />
+          <span className="mt-1 block">{bandMessage(s.wfo_days, s.required_days)}{s.office_days_below_minimum ? ` · +${s.office_days_below_minimum} under ${hours(policy.min_office_minutes)}` : ""}</span>
+        </>} />
       <SummaryCard label="WFH days" icon={<Home className="size-4" />} loading={loading} value={s?.wfh_days}
         hint={s && (s.leave_days ? `${s.leave_days} leave day(s) excluded` : "days worked from home")} />
       <SummaryCard label="WFO %" icon={<Gauge className="size-4" />} loading={loading} value={formatPercent(s?.wfo_percentage)}
@@ -78,7 +146,14 @@ export function WfoKpis({ summary: s, policy, loading }: { summary?: WfoSummary;
   );
 }
 
-export function WeeklyProgress({ weeks, policy }: { weeks: WfoWeek[]; policy: WfoPolicy }) {
+/** A week's bar: green when met, amber one day short, red more; a running week stays neutral. */
+function weekColor(w: WfoWeek): string {
+  if (w.status === "IN_PROGRESS") return MODE_META.OFFICE.color;
+  if (w.status === "MET") return BAND_META.MET.color;
+  return w.shortfall <= 1 ? BAND_META.NEAR.color : BAND_META.BELOW.color;
+}
+
+export function WeeklyProgress({ weeks, policy }: { weeks: WfoWeek[]; policy?: WfoPolicy }) {
   const shown = weeks.filter((w) => w.working_days > 0 || w.status === "IN_PROGRESS" || w.status === "UPCOMING");
   if (!shown.length) return <p className="px-5 py-6 text-sm text-ink-3">No working days in this month yet.</p>;
   return (
@@ -103,9 +178,9 @@ export function WeeklyProgress({ weeks, policy }: { weeks: WfoWeek[]; policy: Wf
             </div>
             <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-label={`${w.label}: ${w.wfo_days} of ${w.required} WFO days`}
               aria-valuemin={0} aria-valuemax={w.required} aria-valuenow={Math.min(w.wfo_days, w.required)}>
-              <div className="h-full rounded-full" style={{ width: pct + "%", background: MODE_META.OFFICE.color }} />
+              <div className="h-full rounded-full" style={{ width: pct + "%", background: weekColor(w) }} />
             </div>
-            {w.working_days < 5 && w.required < policy.min_days_per_week && (
+            {policy && w.working_days < 5 && w.required < policy.min_days_per_week && (
               <p className="mt-1 text-[11px] text-ink-3">{w.working_days} working day(s) this week, so {w.required} required (prorated)</p>
             )}
           </li>

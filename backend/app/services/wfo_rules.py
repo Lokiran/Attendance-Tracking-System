@@ -214,6 +214,19 @@ class WeekResult:
     shortfall: int
 
 
+WFO_NEAR_DAYS = 3  # up to this many WFO days short of the requirement is "near" (orange), more is "below" (red)
+
+
+def wfo_band(wfo_days: int, required_days: int, near: int = WFO_NEAR_DAYS) -> str:
+    """How a period's WFO days compare with its requirement (12 a month by default, prorated for partial
+    months and leave): MET (green) at or above it, NEAR (orange) up to ``near`` days short, BELOW (red)."""
+    if wfo_days >= required_days:
+        return "MET"
+    if wfo_days >= required_days - near:
+        return "NEAR"
+    return "BELOW"
+
+
 @dataclass
 class WfoSummary:
     working_days: int = 0

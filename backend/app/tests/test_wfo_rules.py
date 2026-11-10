@@ -299,3 +299,9 @@ def test_office_days_without_any_hours_count_as_wfo_days():
             for d in days]
     s = summary(days)
     assert s.wfo_days == 1 and s.office_days_below_minimum == 1  # 2 Nov (unknown) counts, 3 Nov (2 h) does not
+
+
+def test_wfo_band_green_orange_red():
+    from app.services.wfo_rules import wfo_band
+    assert [wfo_band(d, 12) for d in (14, 12, 11, 9, 8, 0)] == ["MET", "MET", "NEAR", "NEAR", "BELOW", "BELOW"]
+    assert wfo_band(5, 5) == "MET" and wfo_band(0, 0) == "MET"  # prorated requirement (partial month / leave)

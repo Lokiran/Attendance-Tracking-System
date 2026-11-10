@@ -43,6 +43,7 @@ from app.services.wfo_rules import (
     day_status,
     is_wfo_day,
     summarize_wfo,
+    wfo_band,
 )
 
 
@@ -222,7 +223,7 @@ def summary_dict(s: WfoSummary) -> dict:
         "wfh_days": s.wfh_days, "office_days_below_minimum": s.office_days_below_minimum,
         "leave_days": s.leave_days, "holiday_days": s.holiday_days, "weekoff_days": s.weekoff_days,
         "required_days": s.required_days, "shortfall_days": s.shortfall_days, "wfo_percentage": s.wfo_percentage,
-        "compliance": s.compliance,
+        "compliance": s.compliance, "wfo_band": wfo_band(s.wfo_days, s.required_days),
     }
 
 
@@ -288,6 +289,10 @@ def totals(rows: list[dict]) -> dict:
         "wfo_percentage": round(wfo * 100 / working, 1) if working else None,
         "compliant": sum(1 for r in rows if r["compliance"] == "COMPLIANT"),
         "non_compliant": sum(1 for r in rows if r["compliance"] == "NON_COMPLIANT"),
+        # People per WFO band (monthly WFO days against the requirement): green / orange / red.
+        "band_met": sum(1 for r in rows if r["wfo_band"] == "MET"),
+        "band_near": sum(1 for r in rows if r["wfo_band"] == "NEAR"),
+        "band_below": sum(1 for r in rows if r["wfo_band"] == "BELOW"),
     }
 
 

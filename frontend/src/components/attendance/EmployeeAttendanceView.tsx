@@ -1,34 +1,22 @@
-import { CalendarCheck2, CalendarX2, Clock3, Gauge, Home, Timer } from "lucide-react";
 import { useState } from "react";
 
 import { ActualVsRequiredChart, AttendanceTrendChart, DailyHoursChart, StatusDistributionChart } from "@/components/charts/Charts";
 import { ChartCard, Legend } from "@/components/charts/ChartCard";
-import { CardGrid, SummaryCard } from "@/components/ui/SummaryCard";
+import { Card, CardHeader } from "@/components/ui/Card";
 import { DateRangeFilter } from "@/components/ui/DateRangeFilter";
 import { ErrorState } from "@/components/ui/States";
 import { ExportButton } from "@/components/ui/Misc";
+import { WeeklyProgress } from "@/components/wfo/WfoParts";
 import { useRangeParams } from "@/hooks/useUrlState";
 import { addMonths, todayInOffice } from "@/lib/dates";
 import { formatDate, formatMinutes, formatPercent, hours, STATUS_LABEL } from "@/lib/format";
 import { useEmployeeDays, useEmployeeSummary, useEmployeeTrends } from "@/lib/queries";
-import type { DayStatus, Summary } from "@/lib/types";
+import type { DayStatus } from "@/lib/types";
 
 import { AttendanceCalendar } from "./AttendanceCalendar";
 import { AttendanceHistoryTable } from "./AttendanceHistoryTable";
+import { AttendanceOverview } from "./AttendanceOverview";
 import { DayDetailModal } from "./DayDetailModal";
-
-function dayCount(n: number) {
-  return n === 1 ? "1 day" : `${n} days`;
-}
-
-/** "2h 15m short of the shift hours" — over the days whose hours the timesheet recorded only. */
-function shiftHint(s: Summary) {
-  if (!s.hours_days) return s.present_days ? "the timesheet has no hours for these days" : "no office days in this period";
-  const v = s.variance_minutes;
-  const days = `on ${dayCount(s.hours_days)} with hours`;
-  if (v === 0) return `exactly the shift hours ${days}`;
-  return `${formatMinutes(Math.abs(v))} ${v < 0 ? "short of" : "over"} the shift hours ${days}`;
-}
 
 /** Summary cards, calendar, charts and history for one employee — used for "me" and for drill-down. Everything
  *  comes from the timesheets the Admin imports. */
@@ -44,6 +32,8 @@ export function EmployeeAttendanceView({ employeeId, header }: { employeeId: num
   const sixMonthStart = addMonths(today, -5);
   const monthly = useEmployeeTrends(employeeId, sixMonthStart, today, "month");
   const s = summary.data;
+  // Without any recorded hours in the period, the hours chart would be empty: show weekly WFO progress instead.
+  const hasHours = !!days.data?.items.some((d) => d.hours_known && d.net_minutes > 0);
 
   const distribution: { status: DayStatus; count: number }[] = s
     ? [
@@ -67,37 +57,31 @@ export function EmployeeAttendanceView({ employeeId, header }: { employeeId: num
       {summary.isError ? (
         <ErrorState error={summary.error} onRetry={() => summary.refetch()} />
       ) : (
-        <CardGrid cols={6}>
-          <SummaryCard label="Days present" icon={<CalendarCheck2 className="size-4" />} loading={!s} value={s?.present_days}
-            hint={s && (s.extra_present_days ? `incl. ${dayCount(s.extra_present_days)} outside schedule` : `of ${dayCount(s.expected_days)} scheduled`)} />
-          <SummaryCard label="Days absent" icon={<CalendarX2 className="size-4" />} loading={!s} value={s?.absent_days}
-            hint={s && (s.no_timesheet_days ? `${dayCount(s.no_timesheet_days)} not in a timesheet yet` : "scheduled days not in the timesheet")} />
-          <SummaryCard label="WFH days" icon={<Home className="size-4" />} loading={!s} value={s?.wfh_days}
-            hint={s && (s.leave_days ? `plus ${dayCount(s.leave_days)} on leave` : "working days not in the office")} />
-          <SummaryCard label="Office hours" icon={<Clock3 className="size-4" />} loading={!s}
-            value={s && (s.hours_days ? formatMinutes(s.net_minutes) : s.present_days ? "Not recorded" : "—")} hint={s && shiftHint(s)} />
-          <SummaryCard label="Avg per day" icon={<Timer className="size-4" />} loading={!s} value={formatMinutes(s?.average_net_minutes)}
-            hint={s && (s.hours_days ? `across ${dayCount(s.hours_days)} with hours` : "only for days the timesheet gives hours")} />
-          <SummaryCard label="Attendance rate" icon={<Gauge className="size-4" />} loading={!s} value={formatPercent(s?.attendance_percentage)}
-            hint={s && (s.expected_days ? `${s.present_expected_days} of ${dayCount(s.expected_days)} scheduled` : "no scheduled days yet")} />
-        </CardGrid>
+        <AttendanceOverview s={s} />
       )}
 
       <div className="grid gap-5 xl:grid-cols-2">
         <AttendanceCalendar employeeId={employeeId} month={month} onMonthChange={setMonth} onSelectDay={(d) => set({ day: d }, false)} />
-        <ChartCard
-          title="Office hours per day"
-          subtitle={formatDate(start) + " – " + formatDate(end) + " · from the timesheet · click a bar for details"}
-          loading={days.isLoading}
-          error={days.error}
-          onRetry={() => days.refetch()}
-          isEmpty={!days.data?.items.some((d) => d.net_minutes > 0)}
-          emptyText="The timesheets for this period have no hours (only the days people were in)."
-          table={{ columns: ["Date", "Status", "Office hours", "Required"], rows: (days.data?.items ?? []).map((d) => [d.date, STATUS_LABEL[d.status], d.hours_known ? formatMinutes(d.net_minutes) : "Not recorded", formatMinutes(d.required_minutes)]) }}
-          height={300}
-        >
-          <DailyHoursChart days={days.data?.items ?? []} onSelectDay={(d) => set({ day: d }, false)} />
-        </ChartCard>
+        {hasHours || !s?.wfo ? (
+          <ChartCard
+            title="Office hours per day"
+            subtitle={formatDate(start) + " – " + formatDate(end) + " · from the timesheet · click a bar for details"}
+            loading={days.isLoading}
+            error={days.error}
+            onRetry={() => days.refetch()}
+            isEmpty={!days.data?.items.some((d) => d.net_minutes > 0)}
+            emptyText="The timesheets for this period have no hours (only the days people were in)."
+            table={{ columns: ["Date", "Status", "Office hours", "Required"], rows: (days.data?.items ?? []).map((d) => [d.date, STATUS_LABEL[d.status], d.hours_known ? formatMinutes(d.net_minutes) : "Not recorded", formatMinutes(d.required_minutes)]) }}
+            height={300}
+          >
+            <DailyHoursChart days={days.data?.items ?? []} onSelectDay={(d) => set({ day: d }, false)} />
+          </ChartCard>
+        ) : (
+          <Card>
+            <CardHeader title="WFO progress by week" subtitle="Office days each week against the weekly requirement · from the timesheet" />
+            <WeeklyProgress weeks={s.wfo.weekly_wfo_breakdown} />
+          </Card>
+        )}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">

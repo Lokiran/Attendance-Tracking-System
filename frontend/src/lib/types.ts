@@ -95,6 +95,8 @@ export interface Summary {
   average_net_minutes: number | null;
   attendance_percentage: number | null;
   late_days: number;
+  /** WFO figures for the same range (office days against the requirement, weekly breakdown). */
+  wfo?: (WfoSummary & { weekly_wfo_breakdown: WfoWeek[] }) | null;
 }
 
 export interface CurrentStatus {
@@ -351,6 +353,7 @@ export interface TeamMember extends UserBrief {
 export type WorkMode = "OFFICE" | "WFH" | "LEAVE" | "HOLIDAY" | "WEEKOFF";
 export type WfoSource = "MANUAL_OVERRIDE" | "UPLOAD_COLUMN" | "BADGE" | "WIFI" | "CHECK_IN" | "INFERRED" | "CALENDAR";
 export type Compliance = "COMPLIANT" | "NON_COMPLIANT";
+export type WfoBand = "MET" | "NEAR" | "BELOW";
 
 export interface WfoPolicy {
   min_days_per_week: number;
@@ -371,6 +374,8 @@ export interface WfoSummary {
   shortfall_days: number;
   wfo_percentage: number | null;
   compliance: Compliance;
+  /** WFO days against required_days: MET (green), NEAR (up to 3 short, orange), BELOW (red). */
+  wfo_band?: WfoBand;
 }
 
 export interface WfoWeek {
@@ -432,6 +437,10 @@ export interface WfoTotals {
   wfo_percentage: number | null;
   compliant: number;
   non_compliant: number;
+  /** People per WFO band: at or above the requirement, up to 3 days short, more than 3 short. */
+  band_met?: number;
+  band_near?: number;
+  band_below?: number;
 }
 
 export interface TeamWfo {
