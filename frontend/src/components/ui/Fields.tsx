@@ -8,7 +8,7 @@ const control =
 export function Field({ label, error, hint, children, htmlFor, required }: {
   label: string;
   error?: string;
-  hint?: string;
+  hint?: ReactNode;
   children: ReactNode;
   htmlFor?: string;
   required?: boolean;

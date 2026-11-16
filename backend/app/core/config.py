@@ -106,6 +106,12 @@ class Settings(BaseSettings):
     dev_login_enabled: bool = False
 
     max_report_days: int = 366
+    # Branding of the attendance PDF / Excel exports. The logo sits on the coloured header band, so use a
+    # light (white) version; a path relative to backend/ or absolute. Keep the file out of the repository.
+    report_company_name: str = ""
+    report_logo_file: str = ""
+    report_brand_color: str = "#0F172A"
+    report_accent_color: str = "#2563EB"
     log_level: str = "INFO"
 
     @model_validator(mode="before")

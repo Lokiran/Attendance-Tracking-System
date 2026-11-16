@@ -21,6 +21,9 @@ et-xmlfile==2.0.0
 pdfminer.six==20250506
 charset-normalizer==3.5.2
 xlrd==2.0.1
+# Attendance report as a PDF (Pillow reads the logo image)
+reportlab==4.2.5
+pillow==13.0.0
 
 # Testing
 pytest==9.1.1

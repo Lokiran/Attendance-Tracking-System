@@ -11,7 +11,7 @@ from __future__ import annotations
 import calendar
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
@@ -99,11 +99,13 @@ class EmployeeDays:
 
 
 def classify_range(db: Session, employees: list[User], start: date, end: date,
-                   overrides: dict[tuple[int, date], dict] | None = None) -> dict[int, EmployeeDays]:
+                   overrides: dict[tuple[int, date], dict] | None = None,
+                   joined_from: dict[int, date] | None = None) -> dict[int, EmployeeDays]:
     """Classified days ``start..end`` per employee (future days included, marked by date).
 
     ``overrides`` replaces evidence fields for (employee, date) pairs; the upload preview uses it to
-    show what a file would change without writing anything.
+    show what a file would change without writing anything; ``joined_from`` is the joining date the commit
+    would set for people added from a timesheet whose file starts earlier.
     """
     ids = [e.id for e in employees]
     # Six days either side so nominal weeks crossing the month boundary can be sized.
@@ -118,6 +120,8 @@ def classify_range(db: Session, employees: list[User], start: date, end: date,
     out: dict[int, EmployeeDays] = {}
     for e in employees:
         emp = employee_data(e)
+        if joined_from and e.id in joined_from:
+            emp = replace(emp, date_joined=min(emp.date_joined, joined_from[e.id]))
         holiday_map = {h.holiday_date: h.name for h in holidays
                        if h.department_id is None or h.department_id == e.department_id}
         cal = Calendar(schedules, holiday_map, emp)

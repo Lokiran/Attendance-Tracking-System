@@ -12,6 +12,9 @@ import type { DayRecord, DayStatus } from "@/lib/types";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const LEGEND: DayStatus[] = ["PRESENT", "WFH", "ABSENT", "LEAVE", "HOLIDAY", "NO_TIMESHEET"];
+const TINTED = new Set<DayStatus>(["PRESENT", "WFH", "ABSENT", "LEAVE", "HOLIDAY"]);
+/** Labels that fit a calendar cell. */
+const SHORT_LABEL: Partial<Record<DayStatus, string>> = { WEEKEND: "Off", NOT_SCHEDULED: "Off", NO_TIMESHEET: "No data" };
 
 export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectDay }: {
   employeeId: number;
@@ -72,6 +75,11 @@ export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectD
               const Icon = meta?.icon;
               const isFuture = d > today;
               const label = formatDate(d) + (rec ? ": " + STATUS_LABEL[rec.status] + (rec.hours_known ? ", " + formatMinutes(rec.net_minutes) : "") : isFuture ? ": upcoming" : "");
+              const off = rec && (rec.status === "WEEKEND" || rec.status === "NOT_SCHEDULED");
+              // A soft tint of the status colour, so the month reads at a glance (the icon and label still carry it).
+              const tint = rec && !off && !isFuture && TINTED.has(rec.status) ? `color-mix(in srgb, ${meta!.color} 11%, transparent)` : undefined;
+              // "Absent" is already the status: only flag other exceptions (late, short hours, ...).
+              const flagged = rec ? rec.exceptions.some((e) => e !== "ABSENT") : false;
               return (
                 <button
                   key={d}
@@ -80,10 +88,12 @@ export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectD
                   disabled={isFuture || !rec}
                   onClick={() => onSelectDay(d)}
                   aria-label={label}
+                  style={tint ? { background: tint } : undefined}
                   className={clsx(
                     "relative flex aspect-square min-h-11 flex-col items-start justify-between rounded-lg border p-1.5 text-left transition-colors sm:aspect-[4/3]",
-                    d === today ? "border-brand" : "border-line",
-                    rec && !isFuture ? "hover:bg-surface-2" : "cursor-default opacity-60",
+                    d === today ? "border-brand" : tint ? "border-transparent" : "border-line",
+                    off && "bg-surface-2",
+                    rec && !isFuture ? "hover:brightness-95" : "cursor-default opacity-60",
                   )}
                 >
                   <span className="tabular text-xs font-medium text-ink">{Number(d.slice(8))}</span>
@@ -94,12 +104,12 @@ export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectD
                       <span className="flex w-full items-center gap-1">
                         {Icon && <Icon className="size-3.5 shrink-0" style={{ color: meta!.color }} aria-hidden />}
                         <span className="tabular hidden truncate text-[10px] text-ink-2 md:inline">
-                          {rec.hours_known ? formatMinutes(rec.net_minutes) : STATUS_LABEL[rec.status]}
+                          {rec.hours_known ? formatMinutes(rec.net_minutes) : SHORT_LABEL[rec.status] ?? STATUS_LABEL[rec.status]}
                         </span>
                       </span>
                     )
                   )}
-                  {rec && rec.exceptions.length > 0 && <span aria-hidden className="absolute right-1.5 top-1.5 size-1.5 rounded-full" style={{ background: "var(--serious)" }} />}
+                  {flagged && <span aria-hidden className="absolute right-1.5 top-1.5 size-1.5 rounded-full" style={{ background: "var(--serious)" }} />}
                 </button>
               );
             })}

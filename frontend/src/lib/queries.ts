@@ -16,6 +16,7 @@ import type {
   Page,
   Summary,
   TeamWfo,
+  MonthSummary,
   Trends,
 } from "./types";
 
@@ -69,6 +70,15 @@ export function useEmployeeTrends(id: number | undefined, start: string, end: st
   return useQuery({
     queryKey: [...qk.attendance, "trends", id, start, end, granularity],
     queryFn: () => api.get<Trends>(`/attendance/employees/${id}/trends`, { start, end, granularity }),
+    enabled: !!id,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useEmployeeMonths(id: number | undefined, start: string, end: string) {
+  return useQuery({
+    queryKey: [...qk.attendance, "months", id, start, end],
+    queryFn: () => api.get<MonthSummary[]>(`/attendance/employees/${id}/months`, { start, end }),
     enabled: !!id,
     placeholderData: keepPreviousData,
   });

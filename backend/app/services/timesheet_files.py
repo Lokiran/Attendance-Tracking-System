@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from app.core.errors import ValidationFailed
-from app.core.wfo_mapping import get_mapping, normalize
+from app.core.wfo_mapping import get_mapping, normalize, normalize_header
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 HEADER_SEARCH_ROWS = 20
@@ -38,6 +38,7 @@ class Table:
     sheets: list[dict] = field(default_factory=list)  # workbook sheets / PDF: {"name", "usable", "rows"}
     sheet: str | None = None                           # the sheet that was read
     file_type: str = "csv"                             # csv | excel | pdf
+    hours_from: dict | None = None                     # {"sheets": [...], "days": n}: times added from other sheets
 
 
 def cell_text(v) -> str:
@@ -59,7 +60,7 @@ def map_header(header: list, mapping) -> dict[str, int]:
     columns = {k: v[0] for k, v in candidates.items()}
     ids = candidates.get("employee", [])
     if len(ids) > 1 and "name" not in columns:
-        plain = [i for i in ids if normalize(cell_text(header[i])) == "employee"]
+        plain = [i for i in ids if normalize_header(cell_text(header[i])) == "employee"]
         specific = [i for i in ids if i not in plain]
         if plain and specific:
             columns["employee"], columns["name"] = specific[0], plain[0]
@@ -198,6 +199,20 @@ def _bounds(header: list[_Word]) -> list[tuple[float, float]]:
     return out
 
 
+# "Some Long Name2026-06-01": the name fills its cell, so the PDF text runs straight into the date.
+_GLUED_DATE = re.compile(r"^(.*?[^\W\d_].*?)\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4})$")
+
+
+def _unglue_date(cells: list, date_at: int | None) -> None:
+    """When the date cell is empty and the cell before it ends with a date, move the date to its own cell."""
+    if date_at is None or date_at == 0 or date_at >= len(cells) or cells[date_at] is not None:
+        return
+    before = cells[date_at - 1]
+    m = _GLUED_DATE.match(before) if isinstance(before, str) else None
+    if m and m.group(1).strip():
+        cells[date_at - 1], cells[date_at] = m.group(1).strip(), m.group(2)
+
+
 def _pdf_table(content: bytes) -> list[list]:
     try:
         from pdfminer.high_level import extract_pages
@@ -208,6 +223,7 @@ def _pdf_table(content: bytes) -> list[list]:
     out: list[list] = []
     header_texts: list[str] | None = None
     bounds: list[tuple[float, float]] = []
+    date_at: int | None = None
     any_text = False
     try:
         pages = list(extract_pages(io.BytesIO(content)))
@@ -221,7 +237,7 @@ def _pdf_table(content: bytes) -> list[list]:
             if header_texts is None:
                 cols = map_header(texts, mapping)
                 if "employee" in cols and "date" in cols:
-                    header_texts, bounds = texts, _bounds(row)
+                    header_texts, bounds, date_at = texts, _bounds(row), cols["date"]
                     out.append(list(texts))
                 continue
             cells: list = [None] * len(header_texts)
@@ -232,6 +248,7 @@ def _pdf_table(content: bytes) -> list[list]:
                         break
             if cells == header_texts:
                 continue  # the header again on a new page
+            _unglue_date(cells, date_at)
             if any(c is not None for c in cells):
                 out.append(cells)
     if not any_text:
@@ -264,7 +281,79 @@ def _choose(data: dict[str, list[list]], sheet: str | None, file_type: str) -> T
         # A monthly workbook keeps raw extracts next to the month's sheet ("September 2026"): prefer that one.
         usable = [i["name"] for i in info if i["usable"]]
         chosen = next((n for n in usable if _MONTH_NAME.search(n)), usable[0] if usable else names[0])
-    return Table(data[chosen], info, chosen, file_type)
+    rows, hours_from = _with_times_from_other_sheets(data, chosen, mapping)
+    return Table(rows, info, chosen, file_type, hours_from)
+
+
+_TIME_KEYS = ("in_time", "out_time", "hours")
+
+
+def _day_key(v):
+    if isinstance(v, datetime):
+        return v.date()
+    return v if hasattr(v, "isoformat") else cell_text(v)
+
+
+def _person_keys(ref, name) -> list[tuple[str, str]]:
+    out = []
+    if cell_text(ref):
+        out.append(("ref", " ".join(cell_text(ref).split()).lower()))
+    if cell_text(name):
+        out.append(("name", normalize(cell_text(name))))
+    return out
+
+
+def _cell(r: list, cols: dict[str, int], key: str):
+    i = cols.get(key)
+    return r[i] if i is not None and i < len(r) else None
+
+
+def _with_times_from_other_sheets(data: dict[str, list[list]], chosen: str, mapping) -> tuple[list[list], dict | None]:
+    """A monthly workbook often lists the days on the month's sheet and keeps the swipe times on another sheet
+    ("TS Raw Data": Code, Employee, Date, Time In, Time Out, Total Hrs). When the chosen sheet has no times,
+    copy them over for the same person (by ID, or by name when the ID is written differently) and date."""
+    rows = data[chosen]
+    found = find_header(rows, mapping)
+    if found is None or set(_TIME_KEYS) & found[1].keys():
+        return rows, None
+    times: dict[tuple, dict[str, object]] = {}
+    labels: dict[str, str] = {}
+    sources: list[str] = []
+    for name, other in data.items():
+        if name == chosen:
+            continue
+        f = find_header(other, mapping)
+        if f is None or not set(_TIME_KEYS) & f[1].keys():
+            continue
+        at, cols = f
+        sources.append(name)
+        for k in _TIME_KEYS:
+            if k in cols:
+                labels.setdefault(k, cell_text(other[at][cols[k]]))
+        for r in other[at + 1:]:
+            values = {k: _cell(r, cols, k) for k in _TIME_KEYS if cell_text(_cell(r, cols, k))}
+            day = _day_key(_cell(r, cols, "date"))
+            if not values or not cell_text(day):
+                continue
+            for pk in _person_keys(_cell(r, cols, "employee"), _cell(r, cols, "name")):
+                times.setdefault((pk, day), values)  # the first sheet listing the day wins
+    if not times:
+        return rows, None
+    at, cols = found
+    keys = [k for k in _TIME_KEYS if k in labels]
+    width = len(rows[at])
+    out = [list(r) for r in rows[:at]]
+    out.append(list(rows[at]) + [labels[k] for k in keys])
+    matched = 0
+    for r in rows[at + 1:]:
+        day = _day_key(_cell(r, cols, "date"))
+        people = _person_keys(_cell(r, cols, "employee"), _cell(r, cols, "name"))
+        hit = next((times[(pk, day)] for pk in people if (pk, day) in times), None)
+        matched += hit is not None
+        out.append((list(r) + [None] * width)[:width] + [hit.get(k) if hit else None for k in keys])
+    if not matched:
+        return rows, None  # nothing in common: read the sheet as it is
+    return out, {"sheets": sources, "days": matched}
 
 
 def read_workbook(filename: str, content: bytes, sheet: str | None = None) -> Table:

@@ -1,4 +1,5 @@
-"""CSV exports. Same authorisation as the dashboards; every export is audited."""
+"""Exports (CSV, and Excel / PDF for one employee). Same authorisation as the dashboards; every export is
+audited."""
 
 import logging
 
@@ -7,7 +8,7 @@ from fastapi.responses import Response
 
 from app.api.deps import DB, AdminUser, CurrentUser, Ctx, ManagerOrAdmin, Range
 from app.core.errors import AppError
-from app.services import audit, reports
+from app.services import attendance_export, audit, reports
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 logger = logging.getLogger("ats.reports")
@@ -35,6 +36,44 @@ def employee_attendance(employee_id: int, rng: Range, user: CurrentUser, db: DB,
     params = {"employee_id": employee_id, "start": rng.start, "end": rng.end}
     return _csv(db, user, ctx, "employee-attendance", params,
                 lambda: reports.employee_attendance(db, user, employee_id, rng.start, rng.end))
+
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _file(db, user, ctx, report: str, params: dict, build, media_type: str) -> Response:
+    try:
+        filename, body = build()
+    except AppError:
+        raise
+    except Exception:
+        logger.exception("report generation failed: %s", report)
+        raise AppError("The report could not be generated. Please try again.", code="report_failed",
+                       status_code=500) from None
+    audit.record(db, actor_id=user.id, action="REPORT_EXPORTED", entity_type="report", entity_id=report,
+                 after=params, ctx=ctx)
+    db.commit()
+    return Response(content=body, media_type=media_type,
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                             "Cache-Control": "no-store"})
+
+
+@router.get("/employee-attendance.xlsx", summary="One employee's attendance as an Excel workbook")
+def employee_attendance_xlsx(employee_id: int, rng: Range, user: CurrentUser, db: DB, ctx: Ctx):
+    def build():
+        report = attendance_export.gather(db, user, employee_id, rng.start, rng.end)
+        return attendance_export.filename(report, "xlsx"), attendance_export.to_xlsx(report)
+    params = {"employee_id": employee_id, "start": rng.start, "end": rng.end, "format": "xlsx"}
+    return _file(db, user, ctx, "employee-attendance", params, build, XLSX)
+
+
+@router.get("/employee-attendance.pdf", summary="One employee's attendance as a branded PDF")
+def employee_attendance_pdf(employee_id: int, rng: Range, user: CurrentUser, db: DB, ctx: Ctx):
+    def build():
+        report = attendance_export.gather(db, user, employee_id, rng.start, rng.end)
+        return attendance_export.filename(report, "pdf"), attendance_export.to_pdf(report)
+    params = {"employee_id": employee_id, "start": rng.start, "end": rng.end, "format": "pdf"}
+    return _file(db, user, ctx, "employee-attendance", params, build, "application/pdf")
 
 
 @router.get("/team-attendance.csv", summary="Per-employee summary for my scope")

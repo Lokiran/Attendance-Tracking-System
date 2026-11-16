@@ -209,6 +209,12 @@ def test_dev_login_when_enabled(client, org, db, monkeypatch):
     db.commit()
     assert client.post("/api/auth/dev-login", json={"email": org.sneha.email}).status_code == 401
     assert client.post("/api/auth/dev-login", json={"email": "nobody@test.example"}).status_code == 401
+    # an employee ID works too (people added from a timesheet have placeholder emails)
+    org.rahul.employee_code = "Intern - 10001"
+    db.commit()
+    r = client.post("/api/auth/dev-login", json={"email": "  intern  -  10001 "})
+    assert r.status_code == 200 and r.json()["user"]["full_name"] == "Rahul Reddy"
+    assert client.post("/api/auth/dev-login", json={"email": "NOPE-1"}).status_code == 401
 
 
 def test_password_login_still_works_and_records_method(client, org, db):

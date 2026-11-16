@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, FileUp, Info, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileUp, Info, Link2, Trash2, UserPlus } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
@@ -14,7 +14,7 @@ import { MODE_META } from "@/components/wfo/WfoParts";
 import { api } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { useInvalidateAttendance } from "@/lib/queries";
-import type { AttendanceUpload, NameMismatch, UnknownEmployee, UploadConflict, WorkMode } from "@/lib/types";
+import type { AttendanceUpload, NameMatch, NameMismatch, UnknownEmployee, UploadConflict, WorkMode } from "@/lib/types";
 
 const KEY = ["admin", "attendance-uploads"];
 const UNKNOWN = "unknown employee ";
@@ -37,6 +37,8 @@ function Preview({ upload, onDone, onReread, rereading }: {
   const addable = unknown.filter((u) => u.can_add);
   const unknownRows = unknown.reduce((n, u) => n + u.rows, 0);
   const mismatches = s.name_mismatches ?? [];
+  const matched = s.matched_by_name ?? [];
+  const moved = s.joining_dates_moved ?? [];
   // Unknown IDs have their own list (older uploads do not, so their errors are all shown as rows).
   const otherErrors = s.unknown_employees ? s.errors.filter((e) => !e.error.startsWith(UNKNOWN)) : s.errors;
   const commit = useMutation({
@@ -76,6 +78,17 @@ function Preview({ upload, onDone, onReread, rereading }: {
     { key: "id", header: "Employee ID", cell: (m) => m.employee_ref },
     { key: "file", header: "Name in the file", cell: (m) => m.file_name },
     { key: "app", header: "Name in the app", cell: (m) => m.app_name },
+  ];
+  const matchedColumns: Column<NameMatch>[] = [
+    { key: "id", header: "ID in the file", cell: (m) => <span className="font-medium text-ink">{m.employee_ref}</span> },
+    { key: "name", header: "Name", cell: (m) => m.name },
+    { key: "app", header: "Linked to", cell: (m) => <span>{m.app_name}<span className="block text-xs text-ink-3">{m.app_code}</span></span> },
+    { key: "rows", header: "Rows", align: "right", cell: (m) => <span className="tabular">{m.rows}</span> },
+  ];
+  const notes = [
+    ...(s.hours_from ? [`Office hours for ${s.hours_from.days} day(s) were taken from the sheet${s.hours_from.sheets.length > 1 ? "s" : ""} ${s.hours_from.sheets.map((n) => `"${n}"`).join(", ")} (same person and date).`] : []),
+    ...(moved.length ? [`${moved.length} person(s) added from a later timesheet start earlier in this file: their joining date moves back to ${formatDate(moved[0].to)}${moved.length > 1 && moved.some((m) => m.to !== moved[0].to) ? " (or the month of their first day)" : ""} when you import.`] : []),
+    ...(s.date_notes ?? []),
   ];
   const isPreview = upload.status === "PREVIEW";
   const sheets = s.sheets ?? [];
@@ -134,13 +147,13 @@ function Preview({ upload, onDone, onReread, rereading }: {
             </li>
           ))}
         </ul>
-        {((s.date_notes ?? []).length > 0 || (s.employees_added ?? 0) > 0) && (
+        {(notes.length > 0 || (s.employees_added ?? 0) > 0) && (
           <ul className="space-y-1 text-xs text-ink-2" aria-label="Notes about the file">
             {(s.employees_added ?? 0) > 0 && (
               <li className="flex gap-1.5"><CheckCircle2 className="mt-px size-3.5 shrink-0" style={{ color: "var(--good)" }} aria-hidden />
                 {s.employees_added} employee(s) were added from this file. Set their email, manager and department on the Employees page.</li>
             )}
-            {(s.date_notes ?? []).map((n) => (
+            {notes.map((n) => (
               <li key={n} className="flex gap-1.5"><Info className="mt-px size-3.5 shrink-0 text-ink-3" aria-hidden />{n}</li>
             ))}
           </ul>
@@ -171,6 +184,16 @@ function Preview({ upload, onDone, onReread, rereading }: {
             </p>
             <DataTable caption="Employee IDs not in the app" columns={unknownColumns} rows={unknown} rowKey={(u) => u.employee_ref} />
           </div>
+        )}
+        {matched.length > 0 && (
+          <details className="text-sm" open={isPreview}>
+            <summary className="cursor-pointer font-semibold text-ink">
+              <Link2 className="mr-1.5 inline size-4 align-[-3px]" style={{ color: "var(--good)" }} aria-hidden />
+              {matched.length} ID(s) changed since the last timesheet: linked by name, so nobody is added twice
+            </summary>
+            <p className="mt-1 text-xs text-ink-2">These IDs are not in the app, but exactly one person has the same name, so the rows are imported for that person. Discard the upload if a link is wrong.</p>
+            <div className="mt-2"><DataTable caption="IDs linked by name" columns={matchedColumns} rows={matched} rowKey={(m) => m.employee_ref} /></div>
+          </details>
         )}
         {mismatches.length > 0 && (
           <details className="text-sm">

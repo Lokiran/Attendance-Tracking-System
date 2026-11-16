@@ -476,6 +476,14 @@ export interface UnknownEmployee {
 }
 export interface NameMismatch { employee_ref: string; file_name: string; app_name: string }
 
+export interface NameMatch {
+  employee_ref: string;
+  name: string;
+  app_code: string | null;
+  app_name: string;
+  rows: number;
+}
+
 export interface AttendanceUpload {
   id: number;
   filename: string;
@@ -510,6 +518,12 @@ export interface AttendanceUpload {
     presence_mode?: "OFFICE" | "WFH" | null;
     unknown_employees?: UnknownEmployee[];
     name_mismatches?: NameMismatch[];
+    /** IDs not in the app that were linked to the one person with the same name (an ID that changed). */
+    matched_by_name?: NameMatch[];
+    /** Times copied from another sheet of the workbook (the month's sheet had none). */
+    hours_from?: { sheets: string[]; days: number } | null;
+    /** People added from an earlier timesheet whose joining date moves back to this file's month. */
+    joining_dates_moved?: { employee_code: string; full_name: string; from: string; to: string }[];
     date_notes?: string[];
     blank_rows?: number;
     employees_added?: number;
@@ -522,4 +536,24 @@ export interface AttendanceUpload {
   uploaded_by_name: string | null;
   created_at: string;
   committed_at: string | null;
+}
+
+/** One calendar month of an employee's period: office (WFO) days against the days required. */
+export interface MonthSummary {
+  label: string; // "Sep 2026"
+  start: string;
+  end: string;
+  /** The period covers only part of the month. */
+  partial: boolean;
+  /** A timesheet covers this month for this person (otherwise there is nothing to judge). */
+  covered: boolean;
+  working_days: number;
+  office_days: number;
+  required_days: number;
+  wfo_band: WfoBand;
+  wfh_days: number;
+  leave_days: number;
+  absent_days: number;
+  attendance_percentage: number | null;
+  average_net_minutes: number | null;
 }

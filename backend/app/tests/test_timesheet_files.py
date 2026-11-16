@@ -101,3 +101,16 @@ def test_text_formats_and_unsupported_files():
         read_workbook("t.ods", b"x")
     with pytest.raises(ValidationFailed, match="PDF"):
         read_workbook("t.docx", b"x")
+
+
+def test_pdf_date_glued_to_a_long_name_is_split_off():
+    """A name that fills its cell is printed right up against the date: one run of text in the PDF."""
+    y = 540.0
+    page = [(57, y, "Emp. ID"), (181, y, "Employee Name"), (357, y, "Date"),
+            (72, y - 15, "E005"), (171, y - 15, "Rahul Reddy"), (343, y - 15, "2026-10-01"),
+            (72, y - 30, "E006"), (120, y - 30, "A Very Long Name That Fills The Whole Cell2026-10-02"),
+            (72, y - 45, "E007"), (120, y - 45, "Another Long Name That Fills The Cell 215/10/2026")]
+    t = read_workbook("October 2026.pdf", make_pdf([page]))
+    assert t.rows[1] == ["E005", "Rahul Reddy", "2026-10-01"]
+    assert t.rows[2] == ["E006", "A Very Long Name That Fills The Whole Cell", "2026-10-02"]
+    assert t.rows[3][2].endswith("/10/2026") and t.rows[3][1].startswith("Another Long Name")

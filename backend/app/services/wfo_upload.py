@@ -223,6 +223,7 @@ class ParseResult:
     name_mismatches: list[dict]
     dates: DateReader
     blank_rows: int
+    matched_by_name: list[dict] = field(default_factory=list)  # file ID unknown, linked by a unique name
 
 
 def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkMode = WorkMode.OFFICE) -> ParseResult:
@@ -248,9 +249,16 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
     people = db.execute(select(User.id, func.lower(User.employee_code), func.lower(User.email), User.date_joined,
                                User.full_name)).all()
     by_ref = {}
+    by_name: dict[str, list] = defaultdict(list)
     for uid, code, email, joined, full_name in people:
-        by_ref[ref_key(code)] = (uid, joined, full_name)
-        by_ref[ref_key(email)] = (uid, joined, full_name)
+        # People added from a timesheet have a guessed joining date (the 1st of their first month): an earlier
+        # month is accepted and moves it back. A joining date HR entered is a real limit.
+        guessed = (email or "").endswith("@" + IMPORT_EMAIL_DOMAIN)
+        entry = (uid, date.min if guessed else joined, full_name, code)
+        by_ref[ref_key(code)] = entry
+        by_ref[ref_key(email)] = entry
+        by_name[normalize(full_name)].append(entry)
+    matched_by_name: dict[str, dict] = {}
     tz = office_tz()
     dates = DateReader.for_values([cell(r, "date") for r in body])
     unknown: dict[str, dict] = {}
@@ -271,6 +279,16 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
             if not ref:
                 raise ValueError("employee is empty")
             known = by_ref.get(ref)
+            if known is None and p.employee_name:
+                # The same person under another ID than last month ("Intern-7" in August, "E1234" in
+                # September): link the row when exactly one person has that name, and say so in the preview.
+                same = by_name.get(normalize(p.employee_name), [])
+                if len(same) == 1:
+                    known = same[0]
+                    hit = matched_by_name.setdefault(ref, {"employee_ref": p.employee_ref, "name": p.employee_name,
+                                                           "app_code": known[3].upper() if known[3] else None,
+                                                           "app_name": known[2], "rows": 0})
+                    hit["rows"] += 1
             if known is None:
                 entry = unknown.setdefault(ref, {"ref": p.employee_ref, "names": Counter(), "rows": 0,
                                                  "first": None})
@@ -281,7 +299,7 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
                     entry["first"] = p.work_date
                 joined = date.min  # a person added from the file joins before their first date in it
             else:
-                p.employee_id, joined, app_name = known
+                p.employee_id, joined, app_name, _code = known
                 if p.employee_name and normalize(p.employee_name) != normalize(app_name) \
                         and p.employee_ref not in mismatches:
                     mismatches[p.employee_ref] = {"employee_ref": p.employee_ref, "file_name": p.employee_name,
@@ -308,7 +326,9 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
                 if p.minutes is None:
                     p.minutes = int((p.last_out - p.first_in).total_seconds() // 60)
             if p.work_date < joined:
-                raise ValueError("date is before the employee joined")
+                raise ValueError(f"date is before {known[2] if known else 'the employee'} joined "
+                                 f"({joined.strftime('%d %b %Y')}): check the employee ID, or change the joining "
+                                 "date on the Employees page")
             if p.work_date > today and p.work_mode not in NOT_WORKING_MODES:
                 raise ValueError("future dates are only accepted for leave, holiday or weekly off")
             if p.work_mode is None and p.minutes is None and not p.is_badge:
@@ -320,7 +340,7 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
             p.error = str(exc)[:255]
         out.append(p)
     return ParseResult(out, {k: cell_text(header[i]) for k, i in columns.items()}, presence_list, unknown,
-                       list(mismatches.values()), dates, blank)
+                       list(mismatches.values()), dates, blank, list(matched_by_name.values()))
 
 
 # ------------------------------------------------------------------ evidence per employee-day
@@ -367,11 +387,20 @@ def aggregate(rows: list[Parsed] | list[AttendanceUploadRow]) -> tuple[dict[tupl
     return dict(updates), duplicates
 
 
-def _evidence_fields(u: DayUpdate) -> dict:
+def kept_minutes(u: DayUpdate, row: AttendanceDaily | None) -> int | None:
+    """Hours of the day after this file. A file that only lists the day (a PDF of the month's sheet) keeps the
+    hours an earlier file gave for the same work mode, instead of blanking them."""
+    if u.upload_minutes is None and row is not None and row.upload_minutes is not None \
+            and row.upload_work_mode == u.upload_mode:
+        return row.upload_minutes
+    return u.upload_minutes
+
+
+def _evidence_fields(u: DayUpdate, row: AttendanceDaily | None = None) -> dict:
     fields = {}
     if u.has_upload:
         fields["upload_mode"] = u.upload_mode
-        fields["upload_minutes"] = u.upload_minutes
+        fields["upload_minutes"] = kept_minutes(u, row)
     if u.has_badge:
         fields["badge_minutes"] = u.badge_minutes
     return fields
@@ -397,21 +426,47 @@ def _classify(db: Session, updates: dict[tuple[int, date], DayUpdate], existing,
     for eid, d in updates:
         by_emp[eid].append(d)
     users = {u.id: u for u in db.scalars(select(User).where(User.id.in_(list(by_emp)))).unique()} if by_emp else {}
+    joined_from = earlier_joins(users, by_emp)
     for eid, dates in by_emp.items():
         overrides = {}
         for d in dates:
             row = existing.get((eid, d))
             if row is not None and row.override_work_mode is not None and not overwrite:
                 continue  # protected: stays as it is
-            fields = _evidence_fields(updates[(eid, d)])
+            fields = _evidence_fields(updates[(eid, d)], row)
             if overwrite:
                 fields["override"] = None
             overrides[(eid, d)] = fields
-        ed = wfo.classify_range(db, [users[eid]], min(dates), max(dates), overrides=overrides)[eid]
+        ed = wfo.classify_range(db, [users[eid]], min(dates), max(dates), overrides=overrides,
+                                joined_from=joined_from)[eid]
         for c in ed.days:
             if (eid, c.date) in updates:
                 results[(eid, c.date)] = c
     return results, users
+
+
+def is_guessed_join(user: User) -> bool:
+    """Added from a timesheet (placeholder email): the joining date was a guess, not HR's."""
+    return (user.email or "").endswith("@" + IMPORT_EMAIL_DOMAIN)
+
+
+def earlier_joins(users: dict[int, User], dates_by_emp) -> dict[int, date]:
+    """New joining dates for people added from a timesheet whose days start before their guessed joining date:
+    the 1st of the month of their earliest day."""
+    out = {}
+    for eid, dates in dates_by_emp.items():
+        u = users.get(eid)
+        first = min(dates) if dates else None
+        if u is not None and first is not None and first < u.date_joined and is_guessed_join(u):
+            out[eid] = first.replace(day=1)
+    return out
+
+
+def _moves(users: dict[int, User], updates) -> dict[int, date]:
+    by_emp: dict[int, list[date]] = defaultdict(list)
+    for eid, d in updates:
+        by_emp[eid].append(d)
+    return earlier_joins(users, by_emp)
 
 
 # ------------------------------------------------------------------ preview / commit / discard
@@ -474,6 +529,8 @@ def preview(db: Session, admin: User, filename: str, content: bytes, ctx: Reques
         "presence_mode": presence_mode.value if result.presence_list else None,
         "unknown_employees": _unknown_list(result),
         "name_mismatches": result.name_mismatches[:200],
+        "matched_by_name": result.matched_by_name[:200],
+        "hours_from": table.hours_from,
         "date_notes": _date_notes(result.dates),
         "blank_rows": result.blank_rows,
     }
@@ -587,6 +644,10 @@ def _summary(db: Session, rows, columns: dict[str, str], overwrite: bool) -> dic
         "errors": [{"row": r.row_number, "employee": r.employee_ref, "error": r.error} for r in errors[:200]],
         "date_from": min(k[1] for k in updates).isoformat() if updates else None,
         "date_to": max(k[1] for k in updates).isoformat() if updates else None,
+        "joining_dates_moved": [
+            {"employee_code": users[eid].employee_code, "full_name": users[eid].full_name,
+             "from": users[eid].date_joined.isoformat(), "to": d.isoformat()}
+            for eid, d in sorted(_moves(users, updates).items(), key=lambda x: users[x[0]].full_name.lower())][:200],
     }
 
 
@@ -617,6 +678,15 @@ def commit(db: Session, admin: User, upload_id: int, overwrite_overrides: bool, 
     rows = list(db.scalars(select(AttendanceUploadRow).where(AttendanceUploadRow.upload_id == upload.id)))
     updates, _duplicates = aggregate(rows)
     existing = _existing(db, updates.keys())
+    affected = {k[0] for k in updates}
+    people = {u.id: u for u in db.scalars(select(User).where(User.id.in_(list(affected)))).unique()} if affected else {}
+    moved = _moves(people, updates)
+    for eid, new_join in moved.items():
+        u = people[eid]
+        audit.record(db, actor_id=admin.id, action="USER_UPDATED", entity_type="user", entity_id=u.id,
+                     before={"date_joined": u.date_joined.isoformat()},
+                     after={"date_joined": new_join.isoformat(), "via_upload": upload.id}, ctx=ctx)
+        u.date_joined = new_join
     applied = created = skipped = overwritten = 0
     touched: dict[int, set[date]] = defaultdict(set)
     now = clock.utcnow()
@@ -638,7 +708,7 @@ def commit(db: Session, admin: User, upload_id: int, overwrite_overrides: bool, 
             db.add(row)
             created += 1
         if u.has_upload:
-            row.upload_work_mode, row.upload_minutes = u.upload_mode, u.upload_minutes
+            row.upload_work_mode, row.upload_minutes = u.upload_mode, kept_minutes(u, row)
         if u.has_badge:
             row.badge_minutes = u.badge_minutes
         if u.first_in:
@@ -662,6 +732,7 @@ def commit(db: Session, admin: User, upload_id: int, overwrite_overrides: bool, 
             min(k[1] for k in updates), max(k[1] for k in updates), local_date(now, office_tz()))
     upload.commit_summary = {"applied_days": applied, "created_days": created, "skipped_overrides": skipped,
                              "overrides_overwritten": overwritten, "error_rows": upload.error_count,
+                             "joining_dates_moved": len(moved),
                              "period_start": upload.period_start.isoformat() if upload.period_start else None,
                              "period_end": upload.period_end.isoformat() if upload.period_end else None}
     audit.record(db, actor_id=admin.id, action="ATTENDANCE_UPLOAD_COMMITTED", entity_type="attendance_upload",

@@ -2,7 +2,7 @@ import secrets
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.deps import DB, AuthDep, Ctx
 from app.core.config import get_settings
@@ -62,9 +62,13 @@ def dev_login(body: DevLoginRequest, response: Response, db: DB, ctx: Ctx):
     s = get_settings()
     if not s.dev_login_enabled or s.app_env == "production":
         raise NotFound("Not found")
-    user = db.scalar(select(User).where(User.email == body.email.strip().lower()))
+    who = " ".join(body.email.split())
+    if "@" in who:
+        user = db.scalar(select(User).where(User.email == who.lower()))
+    else:  # an employee ID, matched like timesheet imports: case-insensitive, runs of spaces as one
+        user = db.scalar(select(User).where(func.upper(User.employee_code) == who.upper()))
     if user is None or not user.is_active:
-        raise Unauthorized("No active account with that email", code="invalid_credentials")
+        raise Unauthorized("No active account with that email or employee ID", code="invalid_credentials")
     result = auth_service.start_session(db, user, ctx, method="dev")
     _set_cookies(response, result.token, result.session.csrf_token)
     return _me(db, result.user, result.session.csrf_token)

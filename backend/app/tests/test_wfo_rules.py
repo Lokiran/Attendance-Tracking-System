@@ -305,3 +305,19 @@ def test_wfo_band_green_orange_red():
     from app.services.wfo_rules import wfo_band
     assert [wfo_band(d, 12) for d in (14, 12, 11, 9, 8, 0)] == ["MET", "MET", "NEAR", "NEAR", "BELOW", "BELOW"]
     assert wfo_band(5, 5) == "MET" and wfo_band(0, 0) == "MET"  # prorated requirement (partial month / leave)
+
+
+def test_a_period_of_several_months_adds_up_each_months_requirement():
+    oct_start, nov_end = date(2026, 10, 1), date(2026, 11, 30)
+    days = month(office(*weekdays_of(date(2026, 10, 1), date(2026, 10, 30))), start=oct_start, end=nov_end)
+    s = summary(days, start=oct_start, end=nov_end)
+    from app.services.wfo_rules import wfo_band
+    assert s.required_days == 24 and s.wfo_days == 22  # 12 for October + 12 for November
+    assert wfo_band(s.wfo_days, s.required_days) == "NEAR"
+
+
+def test_part_of_a_month_is_asked_for_its_share():
+    start, end = date(2026, 11, 2), date(2026, 11, 13)  # 10 of November's 21 working days
+    days = month(office(*weekdays_of(start, end)), start=date(2026, 10, 27), end=date(2026, 11, 19))
+    s = summary(days, start=start, end=end)
+    assert s.required_days == 6 and s.wfo_days == 10

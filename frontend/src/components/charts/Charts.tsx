@@ -16,7 +16,7 @@ import {
 } from "recharts";
 
 import { formatDate, formatMinutes, STATUS_LABEL } from "@/lib/format";
-import type { DayRecord, DayStatus, TrendBucket } from "@/lib/types";
+import type { DayRecord, DayStatus, MonthSummary, TrendBucket, WfoBand } from "@/lib/types";
 
 import { STATUS_META } from "../ui/StatusBadge";
 
@@ -51,6 +51,59 @@ function Tip({ active, payload, label, title, rows }: {
 }
 
 const shortDate = (d: string) => formatDate(d, { year: undefined });
+
+const BAND_COLOR: Record<WfoBand, string> = { MET: "var(--good)", NEAR: "var(--warning)", BELOW: "var(--critical)" };
+const BAND_TEXT: Record<WfoBand, string> = { MET: "On target", NEAR: "Close", BELOW: "Below target" };
+
+/** Office (WFO) days per month, each bar in its status colour, with the days required as a dashed line.
+ *  Months without a timesheet for this person show no bar. */
+export function OfficeDaysByMonthChart({ months, onSelect }: { months: MonthSummary[]; onSelect?: (m: MonthSummary) => void }) {
+  const data = months.map((m) => ({ ...m, value: m.covered ? m.office_days : 0, month: m.label.split(" ")[0] }));
+  const required = Math.max(0, ...months.filter((m) => m.covered && !m.partial).map((m) => m.required_days));
+  const top = Math.max(required, ...data.map((d) => d.value), 1);
+  return (
+    <ResponsiveContainer>
+      <BarChart
+        data={data}
+        margin={{ top: 18, right: 12, bottom: 0, left: -20 }}
+        onClick={(s: any) => {
+          const idx = s?.activeTooltipIndex ?? s?.activeIndex;
+          if (onSelect && idx !== undefined && idx !== null && data[Number(idx)]?.covered) onSelect(data[Number(idx)]);
+        }}
+      >
+        {grid}
+        <XAxis dataKey="month" {...axis} />
+        <YAxis {...axis} allowDecimals={false} domain={[0, Math.ceil((top + 2) / 4) * 4]} />
+        <Tooltip
+          cursor={cursor}
+          content={
+            <Tip
+              title={(_l, p) => (p[0].payload as MonthSummary).label}
+              rows={(p) => {
+                const m = p[0].payload as MonthSummary;
+                if (!m.covered) return [{ label: "No timesheet for this month", value: "" }];
+                return [
+                  { label: "Office days", value: `${m.office_days} of ${m.required_days} required`, color: BAND_COLOR[m.wfo_band] },
+                  { label: "Status", value: BAND_TEXT[m.wfo_band] },
+                  { label: "Attendance", value: m.attendance_percentage === null ? "—" : m.attendance_percentage + "%" },
+                  { label: "Average office hours", value: m.average_net_minutes === null ? "Not recorded" : formatMinutes(m.average_net_minutes) },
+                ];
+              }}
+            />
+          }
+        />
+        {required > 0 && (
+          <ReferenceLine y={required} stroke="var(--text-2)" strokeDasharray="5 4" />
+        )}
+        <Bar dataKey="value" name="Office days" radius={[4, 4, 0, 0]} maxBarSize={44} cursor={onSelect ? "pointer" : undefined}>
+          {data.map((d) => <Cell key={d.label} fill={BAND_COLOR[d.wfo_band]} />)}
+          <LabelList dataKey="value" position="top" fontSize={11} fill="var(--text)"
+            formatter={(v: any) => (Number(v) > 0 ? v : "")} />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
 
 /** Net hours per day (single series) with the required hours as a dashed reference. */
 export function DailyHoursChart({ days, onSelectDay }: { days: DayRecord[]; onSelectDay?: (date: string) => void }) {

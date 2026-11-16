@@ -341,3 +341,110 @@ def test_only_addable_ids_are_added(client, staff):
     assert [u["employee_ref"] for u in after["summary"]["unknown_employees"]] == ["someone@else.example"]
     manager_h = login(client, staff.manager)
     assert client.post(f"{URL}/{up['id']}/create-employees", headers=manager_h, json={}).status_code == 403
+
+
+# ------------------------------------------------------------------ month-to-month: headers, IDs, joining dates
+
+def test_column_names_ignore_punctuation(client, staff):
+    h = login(client, staff.admin)
+    body = upload(client, h, "a.csv", b"Emp. Code,Emp. Name,Date\nEMP001,Person EMP001,05/10/2026\n").json()
+    assert body["error_count"] == 0
+    assert body["summary"]["columns"] == {"employee": "Emp. Code", "name": "Emp. Name", "date": "Date"}
+
+
+def two_sheet_workbook() -> bytes:
+    """The month's list without times, and the office's swipe sheet with them (an ID written differently there)."""
+    from openpyxl import Workbook
+    wb = Workbook()
+    raw = wb.active
+    raw.title = "TS Raw Data"
+    raw.append(["Code", "Employee", "Date", "Time In", "Time Out", "Total Hrs"])
+    raw.append(["EMP001-X", "Person EMP001", datetime(2026, 10, 1), time(9, 30), time(18, 0), time(8, 30)])
+    raw.append(["EMP003", "Person EMP003", datetime(2026, 10, 9), time(10, 0), time(12, 0), time(2, 0)])  # not listed
+    month = wb.create_sheet("October 2026")
+    month.append(["Emp. Code", "Emp. Name", "Date"])
+    month.append(["EMP001", "Person EMP001", datetime(2026, 10, 1)])
+    month.append(["EMP001", "Person EMP001", datetime(2026, 10, 2)])
+    month.append(["Intern-9", "Person EMP002", datetime(2026, 10, 2)])  # EMP002 under last month's intern ID
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_times_from_the_swipe_sheet_and_a_changed_id(client, staff, db):
+    h = login(client, staff.admin)
+    r = upload(client, h, "October 2026.xlsx", two_sheet_workbook(), XLSX)
+    assert r.status_code == 201, r.text
+    up, s = r.json(), r.json()["summary"]
+    assert s["sheet"] == "October 2026" and up["error_count"] == 0
+    assert s["hours_from"] == {"sheets": ["TS Raw Data"], "days": 1}  # matched by name: the IDs differ
+    assert s["columns"]["in_time"] == "Time In" and s["columns"]["hours"] == "Total Hrs"
+    assert s["unknown_employees"] == []
+    assert s["matched_by_name"] == [{"employee_ref": "Intern-9", "name": "Person EMP002", "app_code": "EMP002",
+                                     "app_name": "Person EMP002", "rows": 1}]
+    client.post(f"{URL}/{up['id']}/commit", headers=h, json={})
+    rows = {(r.employee_id, r.work_date): r for r in db.scalars(select(AttendanceDaily))}
+    emp1, emp2 = staff.people["EMP001"].id, staff.people["EMP002"].id
+    assert rows[(emp1, date(2026, 10, 1))].upload_minutes == 510
+    assert rows[(emp1, date(2026, 10, 2))].upload_minutes is None
+    assert (emp2, date(2026, 10, 2)) in rows
+    assert db.scalar(select(func.count()).select_from(User)) == 2 + len(CODES)  # nobody added twice
+
+
+def test_a_shared_name_is_not_guessed(client, staff, factory, db):
+    twin = factory.user("Person Twin")
+    twin.full_name = "Person EMP004"  # now two people have that name
+    db.commit()
+    h = login(client, staff.admin)
+    s = upload(client, h, "a.csv", b"Emp Code,Emp Name,Date\nIntern-9,Person EMP004,05/10/2026\n").json()["summary"]
+    assert s["matched_by_name"] == [] and [u["employee_ref"] for u in s["unknown_employees"]] == ["Intern-9"]
+
+
+def test_an_earlier_month_moves_a_guessed_joining_date_back(client, staff, db):
+    h = login(client, staff.admin)
+    oct_ = upload(client, h, "oct.csv", b"Emp Code,Emp Name,Date\nT-1,New Person,05/10/2026\n").json()
+    client.post(f"{URL}/{oct_['id']}/create-employees", headers=h, json={})
+    client.post(f"{URL}/{oct_['id']}/commit", headers=h, json={})
+    new = db.scalar(select(User).where(User.employee_code == "T-1"))
+    assert new.date_joined == date(2026, 10, 1)
+
+    sep = upload(client, h, "sep.csv", b"Emp Code,Emp Name,Date\nT-1,New Person,15/09/2026\n").json()
+    assert sep["error_count"] == 0
+    assert sep["summary"]["joining_dates_moved"] == [{"employee_code": "T-1", "full_name": "New Person",
+                                                      "from": "2026-10-01", "to": "2026-09-01"}]
+    assert sep["summary"]["office"] == 1  # the preview already counts the day
+    done = client.post(f"{URL}/{sep['id']}/commit", headers=h, json={}).json()
+    assert done["commit_summary"]["joining_dates_moved"] == 1
+    db.refresh(new)
+    assert new.date_joined == date(2026, 9, 1)
+    assert wfo_month(client, new.id, "2026-09")["summary"]["wfo_days"] == 1
+    assert db.scalar(select(AuditLog).where(AuditLog.action == "USER_UPDATED",
+                                            AuditLog.entity_id == str(new.id))) is not None
+
+
+def test_a_joining_date_from_hr_still_applies(client, staff):
+    h = login(client, staff.admin)  # EMP001 joined on 1 January 2026 (set by HR, not guessed from a file)
+    body = upload(client, h, "a.csv", b"Employee,Date\nEMP001,15/12/2025\n").json()
+    [err] = body["summary"]["errors"]
+    assert "before Person EMP001 joined (01 Jan 2026)" in err["error"] and "Employees page" in err["error"]
+    assert body["summary"]["joining_dates_moved"] == []
+
+
+def test_a_file_without_hours_keeps_hours_from_an_earlier_file(client, staff, db):
+    h = login(client, staff.admin)
+    with_hours = upload(client, h, "a.csv", b"Employee,Date,Hours\nEMP001,05/10/2026,8.5\nEMP001,06/10/2026,7\n").json()
+    client.post(f"{URL}/{with_hours['id']}/commit", headers=h, json={})
+    # The same days again from a list without hours (the month's sheet as a PDF), plus a WFH day with hours.
+    days_only = upload(client, h, "b.csv", b"Employee,Date\nEMP001,05/10/2026\nEMP001,07/10/2026\n").json()
+    assert days_only["summary"]["office_below_minimum"] == 0
+    client.post(f"{URL}/{days_only['id']}/commit", headers=h, json={})
+    rows = {r.work_date: r for r in db.scalars(select(AttendanceDaily))}
+    assert rows[date(2026, 10, 5)].upload_minutes == 510   # kept
+    assert rows[date(2026, 10, 6)].upload_minutes == 420   # not in the second file: untouched
+    assert rows[date(2026, 10, 7)].upload_minutes is None  # new day, no hours known
+    # New hours, or another work mode, still replace what was there.
+    newer = upload(client, h, "c.csv", b"Employee,Date,Mode,Hours\nEMP001,05/10/2026,WFO,6\nEMP001,06/10/2026,WFH,\n").json()
+    client.post(f"{URL}/{newer['id']}/commit", headers=h, json={})
+    db.expire_all()
+    rows = {r.work_date: r for r in db.scalars(select(AttendanceDaily))}
+    assert rows[date(2026, 10, 5)].upload_minutes == 360 and rows[date(2026, 10, 6)].upload_minutes is None

@@ -12,7 +12,8 @@ class LoginRequest(BaseModel):
 
 
 class DevLoginRequest(BaseModel):
-    email: EmailStr
+    # An email, or an employee ID ("25298", "Intern - 22026"): people added from a timesheet have placeholder emails.
+    email: str = Field(min_length=1, max_length=255)
 
 
 class ProvidersOut(BaseModel):

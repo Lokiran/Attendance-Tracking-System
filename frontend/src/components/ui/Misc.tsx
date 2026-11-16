@@ -1,6 +1,6 @@
 import { clsx } from "clsx";
 import { Download, RefreshCw } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { api, type Params } from "@/lib/api";
 import { formatTime } from "@/lib/format";
@@ -37,6 +37,63 @@ export function ExportButton({ path, params, label = "Export CSV", size = "md" }
     >
       {label}
     </Button>
+  );
+}
+
+export interface ExportOption {
+  label: string;
+  /** What the file is for, shown under the label. */
+  hint?: string;
+  path: string;
+  icon?: ReactNode;
+}
+
+/** One "Export" button that opens a small menu of file formats (Excel, PDF, CSV). */
+export function ExportMenu({ options, params, label = "Export" }: { options: ExportOption[]; params?: Params; label?: string }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const run = async (o: ExportOption) => {
+    setOpen(false);
+    setBusy(o.path);
+    try {
+      toast.success("Downloaded " + (await api.download(o.path, params)));
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div ref={root} className="relative">
+      <Button variant="secondary" loading={busy !== null} icon={<Download className="size-4" aria-hidden />}
+        aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        {label}
+      </Button>
+      {open && (
+        <div role="menu" aria-label={label} className="absolute right-0 z-20 mt-1.5 w-64 rounded-xl border border-line bg-surface p-1.5 shadow-lg">
+          {options.map((o) => (
+            <button key={o.path} type="button" role="menuitem" onClick={() => run(o)}
+              className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-surface-2">
+              {o.icon && <span className="mt-0.5 text-ink-3" aria-hidden>{o.icon}</span>}
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-ink">{o.label}</span>
+                {o.hint && <span className="block text-xs text-ink-3">{o.hint}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -244,6 +244,15 @@ class WfoSummary:
     weeks: list[WeekResult] = field(default_factory=list)
 
 
+def _calendar_months(start: date, end: date) -> Iterable[tuple[date, date]]:
+    """(first day, last day) of every calendar month that overlaps start..end."""
+    first = start.replace(day=1)
+    while first <= end:
+        nxt = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+        yield first, nxt - timedelta(days=1)
+        first = nxt
+
+
 def summarize_wfo(days: Iterable[PolicyDay], *, start: date, end: date, today: date, policy: WfoPolicy,
                   is_scheduled: Callable[[date], bool]) -> WfoSummary:
     """Policy figures for ``start..end``. ``days`` may include today and future days; only days before
@@ -256,7 +265,6 @@ def summarize_wfo(days: Iterable[PolicyDay], *, start: date, end: date, today: d
     # Standard days: scheduled non-holiday days of the whole period (the full month, future included).
     s.standard_days = sum(1 for d in _dates(start, end) if (by_date[d].scheduled if d in by_date else False))
     completed = [by_date[d] for d in _dates(start, min(end, today - timedelta(days=1))) if d in by_date]
-    scheduled_working = sum(1 for d in completed if is_scheduled_working_day(d))
     for d in completed:
         if is_working_day(d):
             s.working_days += 1
@@ -273,9 +281,15 @@ def summarize_wfo(days: Iterable[PolicyDay], *, start: date, end: date, today: d
         elif d.work_mode == WorkMode.WEEKOFF:
             s.weekoff_days += 1
 
-    if s.standard_days:
-        s.required_days = min(scheduled_working,
-                              round_half_up(policy.min_days_per_month * scheduled_working / s.standard_days))
+    # The requirement is per calendar month: every month in the period asks for ``min_days_per_month``, scaled
+    # by how many of that month's standard days are completed working days of the period (so a month in
+    # progress, a part of a month, leave and holidays all lower it). A period of several months adds them up.
+    for m_start, m_end in _calendar_months(start, end):
+        standard = sum(1 for d in _dates(m_start, m_end)
+                       if (by_date[d].scheduled if d in by_date else is_scheduled(d)))
+        done = sum(1 for d in completed if m_start <= d.date <= m_end and is_scheduled_working_day(d))
+        if standard:
+            s.required_days += min(done, round_half_up(policy.min_days_per_month * done / standard))
     monthly_short = max(0, s.required_days - s.wfo_days)
 
     week_short_total = 0

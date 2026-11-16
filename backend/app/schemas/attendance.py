@@ -115,3 +115,21 @@ class DaysPage(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class MonthOut(BaseModel):
+    """One calendar month of an employee's period: office (WFO) days against the days required."""
+    label: str                      # "Sep 2026"
+    start: date
+    end: date
+    partial: bool                   # the period covers only part of the month
+    covered: bool                   # a timesheet covers this month for this person
+    working_days: int
+    office_days: int
+    required_days: int
+    wfo_band: str                   # MET | NEAR | BELOW
+    wfh_days: int
+    leave_days: int
+    absent_days: int
+    attendance_percentage: float | None
+    average_net_minutes: int | None

@@ -12,12 +12,13 @@ from app.schemas.attendance import (
     DayDetailOut,
     DayRecordOut,
     DaysPage,
+    MonthOut,
     ScheduleBrief,
     SummaryOut,
     TimesheetEntryOut,
 )
 from app.schemas.dashboard import TrendsOut
-from app.services import attendance_service, wfo
+from app.services import attendance_export, attendance_service, wfo
 from app.services.dashboard import bucketize
 from app.services.scope import get_viewable_employee
 
@@ -54,6 +55,15 @@ def employee_trends(employee_id: int, rng: Range, user: CurrentUser, db: DB,
     employee = get_viewable_employee(db, user, employee_id)
     records = attendance_service.records_for(db, employee, rng.start, rng.end)
     return {"granularity": granularity, "headcount": 1, "items": bucketize(records, rng.end, granularity)}
+
+
+@router.get("/employees/{employee_id}/months", response_model=list[MonthOut],
+            summary="Office days against the requirement, month by month")
+def employee_months(employee_id: int, rng: Range, user: CurrentUser, db: DB):
+    employee = get_viewable_employee(db, user, employee_id)
+    records = attendance_service.records_for(db, employee, rng.start, rng.end)
+    return [attendance_export.month_dict(m)
+            for m in attendance_export.month_rows(db, employee, records, rng.start, rng.end)]
 
 
 @router.get("/employees/{employee_id}/days", response_model=DaysPage, summary="Daily records (newest first)")

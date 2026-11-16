@@ -79,6 +79,45 @@ describe("login", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("isn't linked to an attendance account yet. Ask HR");
   });
 
+  it("shows or hides the password and signs in with it", async () => {
+    let signedIn = false;
+    const { calls } = mockApi({
+      "/auth/me": () => (signedIn ? me() : apiError(401, "Not signed in")),
+      "/auth/providers": { password: true, entra: false, dev: false },
+      "POST /auth/login": () => { signedIn = true; return me(); },
+      ...employeeRoutes(),
+    });
+    renderApp("/login");
+    const user = userEvent.setup();
+    const password = await screen.findByLabelText("Password");
+    expect(password).toHaveAttribute("type", "password");
+    await user.click(screen.getByRole("button", { name: "Show password" }));
+    expect(password).toHaveAttribute("type", "text");
+    await user.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(password).toHaveAttribute("type", "password");
+    await user.type(screen.getByLabelText("Email"), "rahul.reddy@nexa.example");
+    await user.type(password, "Secret12345");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("heading", { name: /Good (morning|afternoon|evening), Rahul/ })).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/auth/login")?.body).toEqual({ email: "rahul.reddy@nexa.example", password: "Secret12345" });
+  });
+
+  it("dev sign-in accepts an employee ID", async () => {
+    let signedIn = false;
+    const { calls } = mockApi({
+      "/auth/me": () => (signedIn ? me() : apiError(401, "Not signed in")),
+      "/auth/providers": { password: true, entra: false, dev: true },
+      "POST /auth/dev-login": () => { signedIn = true; return me(); },
+      ...employeeRoutes(),
+    });
+    renderApp("/login");
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("Development sign-in (no password)")); // collapsed next to the password form
+    await user.type(screen.getByLabelText("Sign in as (email or employee ID)"), "Intern - 22026");
+    await user.click(screen.getByRole("button", { name: "Dev sign-in" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/auth/dev-login")?.body).toEqual({ email: "Intern - 22026" }));
+  });
+
   it("signs in with the dev bypass when the backend enables it", async () => {
     let signedIn = false;
     const { calls } = mockApi({
@@ -93,7 +132,7 @@ describe("login", () => {
     renderApp("/login");
     const user = userEvent.setup();
     expect(await screen.findByText("Development sign-in (no password)")).toBeInTheDocument();
-    await user.type(screen.getByLabelText("Sign in as (email)"), "rahul.reddy@nexa.example");
+    await user.type(screen.getByLabelText("Sign in as (email or employee ID)"), "rahul.reddy@nexa.example");
     await user.click(screen.getByRole("button", { name: "Dev sign-in" }));
     expect(await screen.findByRole("heading", { name: /Good (morning|afternoon|evening), Rahul/ })).toBeInTheDocument();
     expect(calls.find((c) => c.path === "/auth/dev-login")?.body).toEqual({ email: "rahul.reddy@nexa.example" });
@@ -104,18 +143,19 @@ describe("employee dashboard", () => {
   it("loads profile and summary metrics from the API", async () => {
     mockApi({ "/auth/me": me(), ...employeeRoutes() });
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: /Good (morning|afternoon|evening), Rahul/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Good (morning|afternoon|evening|night), Rahul/ })).toBeInTheDocument();
     expect(screen.getByText("EMP001")).toBeInTheDocument();
-    expect(screen.getAllByText("Priya Sharma").length).toBeGreaterThan(0);
+    expect(screen.getByText("Reports to Priya Sharma")).toBeInTheDocument();
     expect(await screen.findByText("77.8%")).toBeInTheDocument();
-    // Office hours panel: required hours and the average in office
+    // Office hours panel: the average in office against the shift, and the required hours
+    expect(screen.getByText("Average office hours")).toBeInTheDocument();
+    expect(screen.getByText("8h 00m")).toBeInTheDocument();
+    expect(screen.getByText("per day · shift 8h 00m")).toBeInTheDocument();
     expect(screen.getByText(formatMinutes(8640))).toBeInTheDocument();
-    expect(screen.getByText("18 days × 8h 00m shift")).toBeInTheDocument();
-    expect(screen.getByText("Average in office")).toBeInTheDocument();
-    expect(screen.getByText("per day · target 8h 00m")).toBeInTheDocument();
+    expect(screen.getByText("18 days × 8h 00m")).toBeInTheDocument();
     // WFO panel: 14 of 12 -> green "On target"
-    expect(screen.getByText("of 12 required days")).toBeInTheDocument();
-    expect(screen.getByText("On target")).toBeInTheDocument();
+    expect(screen.getByText("of 12 days required")).toBeInTheDocument();
+    expect(screen.getAllByText("On target").length).toBeGreaterThan(0); // the status pill (and the chart legend)
     expect(screen.getByText("2 days above the 12-day minimum")).toBeInTheDocument();
   });
 
@@ -123,10 +163,54 @@ describe("employee dashboard", () => {
     for (const [wfo, label, message] of [[10, "Close", "2 more office days needed to reach 12"], [6, "Below target", "6 more office days needed to reach 12"]] as const) {
       mockApi({ "/auth/me": me(), ...employeeRoutes(), "/attendance/employees/5/summary": { ...summary, wfo: { ...summary.wfo!, wfo_days: wfo, wfo_band: undefined } } });
       const { unmount } = renderApp("/");
-      expect(await screen.findByText(label)).toBeInTheDocument();
-      expect(screen.getByText(message)).toBeInTheDocument();
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(screen.getAllByText(label).some((el) => el.closest(".rounded-full"))).toBe(true); // the status pill
       unmount();
     }
+  });
+
+  it("shows office days month by month and leaves out months before the first timesheet", async () => {
+    const { calls } = mockApi({ "/auth/me": me(), ...employeeRoutes() });
+    renderApp("/");
+    expect(await screen.findByText("Office days by month")).toBeInTheDocument();
+    await waitFor(() => expect(calls.some((c) => c.path === "/attendance/employees/5/months")).toBe(true));
+    const user = userEvent.setup();
+    const card = screen.getByText("Office days by month").closest("section, div.rounded-xl") as HTMLElement;
+    await user.click(within(card).getByRole("button", { name: /table/i }));
+    const table = await within(card).findByRole("table");
+    expect(within(table).queryByText("Jul 2026")).not.toBeInTheDocument(); // no timesheet yet: not shown
+    expect(within(table).getByRole("row", { name: /Aug 2026 10 12 Close/ })).toBeInTheDocument();
+    expect(within(table).getByRole("row", { name: /Sep 2026 14 12 On target .* 7h 54m/ })).toBeInTheDocument();
+  });
+
+  it("exports my attendance as PDF, Excel or CSV", async () => {
+    const file = (name: string) => () => new Response("x", { status: 200, headers: { "content-disposition": `attachment; filename="${name}"` } });
+    const { calls } = mockApi({
+      "/auth/me": me(), ...employeeRoutes(),
+      "/reports/employee-attendance.pdf": file("attendance_EMP001.pdf"),
+      "/reports/employee-attendance.xlsx": file("attendance_EMP001.xlsx"),
+    });
+    URL.createObjectURL = vi.fn(() => "blob:x");
+    URL.revokeObjectURL = vi.fn();
+    renderApp("/");
+    const user = userEvent.setup();
+    const button = await screen.findByRole("button", { name: "Export" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await user.click(button);
+    const menu = screen.getByRole("menu", { name: "Export" });
+    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual([
+      expect.stringContaining("PDF report"), expect.stringContaining("Excel workbook"), expect.stringContaining("CSV")]);
+    await user.click(within(menu).getByRole("menuitem", { name: /PDF report/ }));
+    expect(await screen.findByText("Downloaded attendance_EMP001.pdf")).toBeInTheDocument();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    const pdf = calls.find((c) => c.path === "/reports/employee-attendance.pdf")!;
+    expect(pdf).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.click(screen.getByRole("menuitem", { name: /Excel workbook/ }));
+    expect(await screen.findByText("Downloaded attendance_EMP001.xlsx")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("has no check-in, check-out or correction requests", async () => {
@@ -144,10 +228,15 @@ describe("employee dashboard", () => {
       "/auth/me": me(),
       ...employeeRoutes(),
       "/attendance/employees/5/summary": { ...summary, net_minutes: 0, hours_days: 0, hours_required_minutes: 0, variance_minutes: 0, average_net_minutes: null },
+      "/attendance/employees/5/days": { items: [day("2026-10-26", { net_minutes: 0, hours_known: false, first_in: null, last_out: null })], total: 1, page: 1, page_size: 10 },
     });
     renderApp("/");
-    expect(await screen.findByText("Not recorded")).toBeInTheDocument();
-    expect(screen.getByText(/This timesheet lists the days only/)).toBeInTheDocument();
+    expect(await screen.findByText(/Not in this timesheet/)).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar", { name: /average office hours/i })).not.toBeInTheDocument();
+    // No empty hours charts: the weekly WFO view takes their place.
+    expect(await screen.findByText("WFO progress by week")).toBeInTheDocument();
+    expect(screen.queryByText("Actual vs required hours")).not.toBeInTheDocument();
+    expect(screen.queryByText("Office hours per day")).not.toBeInTheDocument();
     expect(screen.queryByText(/short of the shift hours/)).not.toBeInTheDocument();
     expect(screen.getByText(formatMinutes(8640))).toBeInTheDocument(); // required hours are always known
   });
@@ -360,17 +449,25 @@ describe("today panel", () => {
   it("greets by the office clock", async () => {
     const { greeting } = await import("@/components/attendance/TodayCard");
     expect(greeting(new Date("2026-11-04T03:00:00Z"))).toBe("Good morning"); // 08:30 IST
+    expect(greeting(new Date("2026-11-03T23:30:00Z"))).toBe("Good morning"); // 05:00 IST
+    expect(greeting(new Date("2026-11-04T06:30:00Z"))).toBe("Good afternoon"); // 12:00 IST
     expect(greeting(new Date("2026-11-04T09:00:00Z"))).toBe("Good afternoon"); // 14:30 IST
+    expect(greeting(new Date("2026-11-04T11:30:00Z"))).toBe("Good evening"); // 17:00 IST
     expect(greeting(new Date("2026-11-04T13:00:00Z"))).toBe("Good evening"); // 18:30 IST
+    expect(greeting(new Date("2026-11-04T15:30:00Z"))).toBe("Good night"); // 21:00 IST
+    expect(greeting(new Date("2026-11-04T18:30:00Z"))).toBe("Good night"); // 00:00 IST
+    expect(greeting(new Date("2026-11-03T23:29:00Z"))).toBe("Good night"); // 04:59 IST
   });
 
   it("shows how far the imported timesheets reach and the shift", async () => {
     mockApi({ "/auth/me": me(), ...employeeRoutes() });
     renderApp("/");
-    expect(await screen.findByText("Reports to")).toBeInTheDocument();
+    expect(await screen.findByText(/^Reports to /)).toBeInTheDocument();
     expect(await screen.findByText("30 Sept 2026")).toBeInTheDocument();
-    expect(screen.getByText(/Later days show as “No timesheet”/)).toBeInTheDocument();
-    expect(screen.getByText("Working days: Mon, Tue, Wed, Thu, Fri")).toBeInTheDocument();
+    expect(screen.getByText(/Later days fill in after the next import/)).toBeInTheDocument();
+    expect(screen.getByText("09:30–18:30")).toBeInTheDocument();
+    expect(screen.getByText("8h 00m a day · Mon–Fri")).toBeInTheDocument();
+    expect(screen.queryByText("Last import")).not.toBeInTheDocument();
   });
 
   it("gives the admin a shortcut to import a timesheet", async () => {
@@ -379,7 +476,17 @@ describe("today panel", () => {
       "/attendance/employees/1/trends": { granularity: "month", headcount: 1, items: [] } });
     renderApp("/");
     expect(await screen.findByRole("link", { name: /Import a timesheet/ })).toHaveAttribute("href", "/admin/attendance-import");
-    expect(screen.getByText("No timesheet has been imported yet")).toBeInTheDocument();
+    expect(screen.getByText("No timesheet imported yet")).toBeInTheDocument();
+  });
+
+  it("gives accounts left out of attendance shortcuts instead of an empty dashboard", async () => {
+    const { calls } = mockApi({ "/auth/me": me("ADMIN", { full_name: "System Administrator", id: 1, attendance_tracked: false }), "/attendance/current": current() });
+    renderApp("/");
+    expect(await screen.findByText(/Your own attendance is not tracked/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Org office days.*Who met/ })).toHaveAttribute("href", "/admin/wfo");
+    expect(await screen.findByText("Timesheets imported up to")).toBeInTheDocument();
+    expect(screen.queryByText("Work from office")).not.toBeInTheDocument();
+    expect(calls.some((c) => c.path.startsWith("/attendance/employees/"))).toBe(false);
   });
 
   it("offers no leave requests", async () => {

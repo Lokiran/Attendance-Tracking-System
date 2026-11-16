@@ -25,6 +25,11 @@ def normalize(text: str | None) -> str:
     return re.sub(r"[\s_\-]+", " ", (text or "").strip().lower()).strip()
 
 
+def normalize_header(text: str | None) -> str:
+    """Column names also ignore punctuation: "Emp. Code", "Emp Code:" and "EMP_CODE" are the same column."""
+    return re.sub(r"[^0-9a-z]+", " ", (text or "").lower()).strip()
+
+
 @dataclass(frozen=True)
 class WfoMapping:
     work_modes: dict[str, WorkMode]          # normalized text -> work mode
@@ -38,7 +43,7 @@ class WfoMapping:
         return normalize(text) in self.badge_sources
 
     def column(self, header: str | None) -> str | None:
-        return self.columns.get(normalize(header))
+        return self.columns.get(normalize_header(header))
 
 
 def mapping_file() -> Path:
@@ -68,7 +73,7 @@ def parse_mapping(data: dict) -> WfoMapping:
         if key not in COLUMN_KEYS:
             raise ValueError(f"wfo_mapping: unknown column {key!r} (use {list(COLUMN_KEYS)})")
         for alias in [key, *aliases]:
-            columns.setdefault(normalize(alias), key)
+            columns.setdefault(normalize_header(alias), key)
     return WfoMapping(work_modes=modes, badge_sources=frozenset(normalize(v) for v in data.get("badge_sources") or []),
                       columns=columns)
 

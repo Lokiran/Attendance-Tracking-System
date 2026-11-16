@@ -1,4 +1,4 @@
-import type { CurrentStatus, DayRecord, EmployeeRow, Overview, PeriodStats, Summary, Trends } from "@/lib/types";
+import type { CurrentStatus, DayRecord, EmployeeRow, MonthSummary, Overview, PeriodStats, Summary, Trends } from "@/lib/types";
 
 export const summary: Summary = {
   start: "2026-10-01",
@@ -62,6 +62,21 @@ export function current(through: string | null = "2026-09-30"): CurrentStatus {
 
 export const trends: Trends = { granularity: "month", headcount: 1, items: [] };
 
+export function monthSummary(label: string, month: string, overrides: Partial<MonthSummary> = {}): MonthSummary {
+  return {
+    label, start: month + "-01", end: month + "-28", partial: false, covered: true, working_days: 22, office_days: 14,
+    required_days: 12, wfo_band: "MET", wfh_days: 0, leave_days: 0, absent_days: 8, attendance_percentage: 63.6,
+    average_net_minutes: null, ...overrides,
+  };
+}
+
+/** No timesheet before August; August close to the target, September on target with hours. */
+export const months: MonthSummary[] = [
+  monthSummary("Jul 2026", "2026-07", { covered: false, office_days: 0, wfo_band: "BELOW", attendance_percentage: null }),
+  monthSummary("Aug 2026", "2026-08", { office_days: 10, wfo_band: "NEAR", attendance_percentage: 47.6 }),
+  monthSummary("Sep 2026", "2026-09", { office_days: 14, average_net_minutes: 474 }),
+];
+
 /** Routes shared by every page that renders the employee dashboard. */
 export function employeeRoutes() {
   return {
@@ -77,6 +92,7 @@ export function employeeRoutes() {
       page_size: 10,
     }),
     "/attendance/employees/5/trends": trends,
+    "/attendance/employees/5/months": months,
   };
 }
 

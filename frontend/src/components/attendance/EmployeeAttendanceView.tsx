@@ -1,17 +1,28 @@
+import { FileSpreadsheet, FileText, Table2 } from "lucide-react";
 import { useState } from "react";
 
-import { ActualVsRequiredChart, AttendanceTrendChart, DailyHoursChart, StatusDistributionChart } from "@/components/charts/Charts";
+import { ActualVsRequiredChart, DailyHoursChart, OfficeDaysByMonthChart, StatusDistributionChart } from "@/components/charts/Charts";
 import { ChartCard, Legend } from "@/components/charts/ChartCard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { DateRangeFilter } from "@/components/ui/DateRangeFilter";
 import { ErrorState } from "@/components/ui/States";
-import { ExportButton } from "@/components/ui/Misc";
+import { ExportMenu } from "@/components/ui/Misc";
 import { WeeklyProgress } from "@/components/wfo/WfoParts";
 import { useRangeParams } from "@/hooks/useUrlState";
-import { addMonths, todayInOffice } from "@/lib/dates";
+import { addMonths, defaultMonthDate, endOfMonth, minDate, todayInOffice } from "@/lib/dates";
 import { formatDate, formatMinutes, formatPercent, hours, STATUS_LABEL } from "@/lib/format";
-import { useEmployeeDays, useEmployeeSummary, useEmployeeTrends } from "@/lib/queries";
-import type { DayStatus } from "@/lib/types";
+import { useEmployeeDays, useEmployeeMonths, useEmployeeSummary, useEmployeeTrends } from "@/lib/queries";
+import type { DayStatus, MonthSummary } from "@/lib/types";
+
+const BAND_TEXT = { MET: "On target", NEAR: "Close", BELOW: "Below target" } as const;
+
+/** Months from the first to the last one a timesheet covers (empty months at either end are left out). */
+function coveredSpan(months: MonthSummary[]): MonthSummary[] {
+  const first = months.findIndex((m) => m.covered);
+  if (first < 0) return [];
+  const last = months.length - 1 - [...months].reverse().findIndex((m) => m.covered);
+  return months.slice(first, last + 1);
+}
 
 import { AttendanceCalendar } from "./AttendanceCalendar";
 import { AttendanceHistoryTable } from "./AttendanceHistoryTable";
@@ -29,8 +40,10 @@ export function EmployeeAttendanceView({ employeeId, header }: { employeeId: num
   const summary = useEmployeeSummary(valid ? employeeId : undefined, start, end);
   const days = useEmployeeDays(valid ? employeeId : undefined, { start, end, page_size: 200, order: "asc" });
   const weekly = useEmployeeTrends(valid ? employeeId : undefined, start, end, "week");
-  const sixMonthStart = addMonths(today, -5);
-  const monthly = useEmployeeTrends(employeeId, sixMonthStart, today, "month");
+  // The last twelve months up to the latest timesheet month: office days against the requirement.
+  const latest = defaultMonthDate(today);
+  const history = useEmployeeMonths(employeeId, addMonths(latest, -11), minDate(endOfMonth(latest), today));
+  const months = coveredSpan(history.data ?? []);
   const s = summary.data;
   // Without any recorded hours in the period, the hours chart would be empty: show weekly WFO progress instead.
   const hasHours = !!days.data?.items.some((d) => d.hours_known && d.net_minutes > 0);
@@ -51,7 +64,14 @@ export function EmployeeAttendanceView({ employeeId, header }: { employeeId: num
       {header}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <DateRangeFilter start={start} end={end} onChange={setRange} />
-        <ExportButton path="/reports/employee-attendance.csv" params={{ employee_id: employeeId, start, end }} />
+        <ExportMenu
+          params={{ employee_id: employeeId, start, end }}
+          options={[
+            { label: "PDF report", hint: "Summary, monthly chart and every day", path: "/reports/employee-attendance.pdf", icon: <FileText className="size-4" /> },
+            { label: "Excel workbook", hint: "Summary, by month and daily sheets", path: "/reports/employee-attendance.xlsx", icon: <FileSpreadsheet className="size-4" /> },
+            { label: "CSV", hint: "Daily rows only", path: "/reports/employee-attendance.csv", icon: <Table2 className="size-4" /> },
+          ]}
+        />
       </div>
 
       {summary.isError ? (
@@ -84,16 +104,23 @@ export function EmployeeAttendanceView({ employeeId, header }: { employeeId: num
         )}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className={hasHours ? "grid gap-5 lg:grid-cols-3" : "grid gap-5 lg:grid-cols-2"}>
         <ChartCard
-          title="Monthly attendance trend"
-          subtitle="Attendance % over the last 6 months"
-          loading={monthly.isLoading}
-          error={monthly.error}
-          isEmpty={!monthly.data?.items.some((b) => b.expected > 0)}
-          table={{ columns: ["Month", "Attendance", "Present/expected"], rows: (monthly.data?.items ?? []).map((b) => [b.label, formatPercent(b.attendance_percentage), `${b.present_expected}/${b.expected}`]) }}
+          title="Office days by month"
+          subtitle={`Dashed line: ${Math.max(0, ...months.filter((m) => m.covered && !m.partial).map((m) => m.required_days)) || 12} days required · click a month to open it`}
+          loading={history.isLoading}
+          error={history.error}
+          onRetry={() => history.refetch()}
+          isEmpty={months.length === 0}
+          emptyText="No timesheet has been imported for this person yet."
+          legend={<Legend items={[{ label: "On target", color: "var(--good)" }, { label: "Close", color: "var(--warning)" }, { label: "Below target", color: "var(--critical)" }]} />}
+          table={{
+            columns: ["Month", "Office days", "Required", "Status", "Attendance", "Average office hours"],
+            rows: months.map((m) => [m.label, m.covered ? m.office_days : "—", m.covered ? m.required_days : "—", m.covered ? BAND_TEXT[m.wfo_band] : "No timesheet",
+              formatPercent(m.attendance_percentage), m.average_net_minutes === null ? "Not recorded" : formatMinutes(m.average_net_minutes)]),
+          }}
         >
-          <AttendanceTrendChart items={monthly.data?.items ?? []} />
+          <OfficeDaysByMonthChart months={months} onSelect={(m) => { setRange({ start: m.start, end: m.end }); setMonth(m.end); }} />
         </ChartCard>
         <ChartCard
           title="Attendance distribution"
@@ -104,18 +131,20 @@ export function EmployeeAttendanceView({ employeeId, header }: { employeeId: num
         >
           <StatusDistributionChart data={distribution} />
         </ChartCard>
-        <ChartCard
-          title="Actual vs required hours"
-          subtitle="Per week, on days the timesheet gives hours"
-          loading={weekly.isLoading}
-          error={weekly.error}
-          isEmpty={!weekly.data?.items.some((b) => b.attended > 0)}
-          emptyText="No hours in the timesheets for this period."
-          legend={<Legend items={[{ label: "Actual (office)", color: "var(--series-1)" }, { label: "Required", color: "var(--series-2)" }]} />}
-          table={{ columns: ["Week", "Actual", "Required"], rows: (weekly.data?.items ?? []).map((b) => [b.label, (hours(b.net_minutes) ?? 0) + " h", (hours(b.hours_required_minutes) ?? 0) + " h"]) }}
-        >
-          <ActualVsRequiredChart items={weekly.data?.items ?? []} />
-        </ChartCard>
+        {hasHours && (
+          <ChartCard
+            title="Actual vs required hours"
+            subtitle="Per week, on days the timesheet gives hours"
+            loading={weekly.isLoading}
+            error={weekly.error}
+            isEmpty={!weekly.data?.items.some((b) => b.attended > 0)}
+            emptyText="No hours in the timesheets for this period."
+            legend={<Legend items={[{ label: "Actual (office)", color: "var(--series-1)" }, { label: "Required", color: "var(--series-2)" }]} />}
+            table={{ columns: ["Week", "Actual", "Required"], rows: (weekly.data?.items ?? []).map((b) => [b.label, (hours(b.net_minutes) ?? 0) + " h", (hours(b.hours_required_minutes) ?? 0) + " h"]) }}
+          >
+            <ActualVsRequiredChart items={weekly.data?.items ?? []} />
+          </ChartCard>
+        )}
       </div>
 
       <AttendanceHistoryTable employeeId={employeeId} start={start} end={end} onSelectDay={(d) => set({ day: d }, false)} />

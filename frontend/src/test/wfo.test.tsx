@@ -195,4 +195,34 @@ describe("WFO: attendance import", () => {
     expect(await screen.findByText(/1 employee\(s\) were added from this file/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Import 8 day(s)" })).toBeEnabled();
   });
+
+  it("shows IDs linked by name, moved joining dates and hours taken from another sheet", async () => {
+    const upload: AttendanceUpload = {
+      ...preview, id: 11, filename: "August 2026.xlsx", row_count: 3, error_count: 0,
+      summary: {
+        ...preview.summary!, rows: 3, valid_rows: 3, error_rows: 0, errors: [], conflicts: [], conflict_count: 0,
+        sheet: "August 2026", presence_list: true, presence_mode: "OFFICE",
+        sheets: [{ name: "TS Raw Data", usable: true, rows: 2 }, { name: "August 2026", usable: true, rows: 3 }],
+        unknown_employees: [], name_mismatches: [],
+        matched_by_name: [{ employee_ref: "Intern-9", name: "Rahul Verma", app_code: "EMP005", app_name: "Rahul Verma", rows: 2 }],
+        hours_from: { sheets: ["TS Raw Data"], days: 2 },
+        joining_dates_moved: [{ employee_code: "T-1", full_name: "New Person", from: "2026-09-01", to: "2026-08-01" }],
+      },
+    };
+    mockApi({
+      "/auth/me": me("ADMIN", { id: 1, full_name: "System Administrator" }),
+      "/admin/attendance-uploads": [],
+      "POST /admin/attendance-uploads": upload,
+    });
+    renderApp("/admin/attendance-import");
+    const user = userEvent.setup();
+    await user.upload(await screen.findByLabelText("File"), new File(["x"], "August 2026.xlsx"));
+    await user.click(screen.getByRole("button", { name: "Upload and preview" }));
+    expect(await screen.findByText(/1 ID\(s\) changed since the last timesheet/)).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "IDs linked by name" });
+    expect(within(table).getByText("Intern-9")).toBeInTheDocument();
+    expect(within(table).getByText("EMP005")).toBeInTheDocument();
+    expect(screen.getByText(/Office hours for 2 day\(s\) were taken from the sheet "TS Raw Data"/)).toBeInTheDocument();
+    expect(screen.getByText(/1 person\(s\) added from a later timesheet start earlier in this file/)).toBeInTheDocument();
+  });
 });
