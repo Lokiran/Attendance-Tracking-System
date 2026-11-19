@@ -114,3 +114,20 @@ def test_pdf_date_glued_to_a_long_name_is_split_off():
     assert t.rows[1] == ["E005", "Rahul Reddy", "2026-10-01"]
     assert t.rows[2] == ["E006", "A Very Long Name That Fills The Whole Cell", "2026-10-02"]
     assert t.rows[3][2].endswith("/10/2026") and t.rows[3][1].startswith("Another Long Name")
+
+
+def test_borderless_pdf_with_glued_header_and_ids_is_split():
+    """A sheet printed without grid lines: the time headers run together ("Time InTime OutTotal Hrs") and a
+    right-aligned ID touches the name beside it ("10001Rahul Reddy")."""
+    y = 540.0
+    page = [(53, y, "Code"), (110, y, "Employee"), (227, y, "Date"), (280, y, "Time InTime OutTotal Hrs"),
+            (81, y - 15, "10001Rahul Reddy"), (230, y - 15, "10/1/2026"), (287, y - 15, "09:40"),
+            (329, y - 15, "17:39"), (375, y - 15, "7:59"),
+            (60, y - 30, "20002-ExtSneha Rao"), (230, y - 30, "10/2/2026"), (287, y - 30, "10:05"),
+            (329, y - 30, "12:15"), (375, y - 30, "2:10"),
+            (53, y - 45, "Guest 01"), (110, y - 45, "Guest 01"), (230, y - 45, "10/2/2026")]
+    t = read_workbook("October 2026.pdf", make_pdf([page]))
+    assert t.rows[0] == ["Code", "Employee", "Date", "Time In", "Time Out", "Total Hrs"]
+    assert t.rows[1] == ["10001", "Rahul Reddy", "10/1/2026", "09:40", "17:39", "7:59"]
+    assert t.rows[2] == ["20002-Ext", "Sneha Rao", "10/2/2026", "10:05", "12:15", "2:10"]
+    assert t.rows[3][:3] == ["Guest 01", "Guest 01", "10/2/2026"]  # already separate: unchanged

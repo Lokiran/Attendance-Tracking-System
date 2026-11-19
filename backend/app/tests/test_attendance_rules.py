@@ -121,11 +121,25 @@ def test_holiday_excluded_and_department_specific_holiday():
     assert recs[1].holiday_name == "Founders Day"
 
 
-def test_work_on_an_off_day_is_an_extra_day_not_in_the_denominator():
+def test_work_on_an_off_day_is_an_extra_day_that_counts_as_attended():
     recs = records(SAT, SAT, [office(SAT, 300)], today=date(2026, 3, 16))
-    assert recs[0].status == DayStatus.PRESENT and not recs[0].expected
+    assert recs[0].status == DayStatus.PRESENT and not recs[0].expected and recs[0].required_minutes == 0
     s = summarize(recs, SAT, SAT)
-    assert s.extra_present_days == 1 and s.expected_days == 0 and s.attendance_percentage is None
+    assert s.extra_present_days == 1 and s.expected_days == 0
+    assert s.counted_days == 1 and s.attendance_percentage == 100.0  # like WFO: a day worked is a working day
+
+
+def test_office_day_on_a_holiday_counts_like_the_wfo_figures():
+    """In the office on an (optional) holiday: the day is not expected (no absence, no shift hours), but it is
+    attended, so the rate is office days out of expected days plus such days - the WFO working days."""
+    hols = [HolidayData(TUE, "Optional holiday", None)]
+    recs = records(MON, WED, [office(MON), office(TUE)], holidays=hols)
+    assert [r.status for r in recs] == [DayStatus.PRESENT, DayStatus.PRESENT, DayStatus.ABSENT]
+    assert not recs[1].expected and recs[1].holiday_name == "Optional holiday"
+    s = summarize(recs, MON, WED)
+    assert (s.present_days, s.expected_days, s.extra_present_days, s.counted_days) == (2, 2, 1, 3)
+    assert s.attendance_percentage == round(2 * 100 / 3, 1)
+    assert s.required_minutes == 2 * 480  # the holiday adds no shift hours
 
 
 def test_future_dates_are_not_evaluated():

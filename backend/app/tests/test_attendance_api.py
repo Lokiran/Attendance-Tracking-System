@@ -70,6 +70,9 @@ def test_hours_and_times_from_the_timesheet(client, frozen, org):
     assert rec["status"] == "PRESENT" and rec["net_minutes"] == 420 and rec["hours_known"]
     assert set(rec["exceptions"]) == {"LATE_ARRIVAL", "SHORT_HOURS"}
     assert day["timesheet"]["upload_filename"] == "timesheet.csv" and day["timesheet"]["work_mode"] == "OFFICE"
+    # The shift of that day comes with it, so the day view can show arrival against the shift start.
+    assert day["shift"]["start_time"] and day["shift"]["required_minutes"] > 0
+    assert day["late_grace_minutes"] >= 0
     s = client.get(f"/api/attendance/employees/{org.sneha.id}/summary",
                    params={"start": "2026-10-01", "end": "2026-10-02"}).json()
     # 7 h on the 1st and 9 h on the 2nd against two 8 h shifts.

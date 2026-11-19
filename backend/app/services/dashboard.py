@@ -18,6 +18,7 @@ from app.services.attendance_rules import (
     EXC_SHORT_HOURS,
     DayRecord,
     Summary,
+    attendance_rate,
     summarize,
 )
 from app.services.scope import resolve_scope
@@ -39,6 +40,7 @@ class ScopeArgs:
 def aggregate(summaries: list[Summary]) -> dict:
     expected = sum(s.expected_days for s in summaries)
     present_expected = sum(s.present_expected_days for s in summaries)
+    extra = sum(s.extra_present_days for s in summaries)
     hours_days = sum(s.hours_days for s in summaries)
     net = sum(s.net_minutes for s in summaries)
     hours_required = sum(s.hours_required_minutes for s in summaries)
@@ -57,7 +59,8 @@ def aggregate(summaries: list[Summary]) -> dict:
         "hours_required_minutes": hours_required,
         "variance_minutes": net - hours_required,
         "average_net_minutes": round(net / hours_days) if hours_days else None,
-        "attendance_percentage": round(present_expected * 100 / expected, 1) if expected else None,
+        "counted_days": expected + extra,
+        "attendance_percentage": attendance_rate(present_expected + extra, expected + extra),
     }
 
 
@@ -231,6 +234,9 @@ def bucketize(records: Iterable[DayRecord], end: date, granularity: str) -> list
                 b["present_expected"] += 1
         if status == present_s:
             b["present"] += 1
+            if not r.expected:  # in the office on a holiday / off day: counts as a working day attended
+                b["expected"] += 1
+                b["present_expected"] += 1
             if r.hours_known:
                 b["attended"] += 1  # days with recorded hours (the average's denominator)
                 b["hours_required_minutes"] += r.required_minutes

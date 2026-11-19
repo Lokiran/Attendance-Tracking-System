@@ -17,8 +17,10 @@ leave request). Rules (also documented in docs/ATTENDANCE_RULES.md):
 * No timesheet entry on a scheduled working day that is not a holiday: ABSENT when a committed timesheet
   covers that date, otherwise NO_TIMESHEET (not expected): a month whose timesheet has not been imported
   yet is not a month of absences.
-* A day is *expected* (in the attendance-percentage denominator) when it is a scheduled working day that
-  is not a holiday, on/after the employee's joining date, and is PRESENT, WFH or ABSENT.
+* A day is *expected* when it is a scheduled working day that is not a holiday, on/after the employee's
+  joining date, and is PRESENT, WFH or ABSENT. The attendance rate is office days out of the expected days
+  plus any office days on a holiday or an off day (``counted_days``): the same working days as the WFO
+  figures, so someone who comes in on an (optional) holiday gets credit for it.
 * Required minutes of an expected day = the shift's ``required_minutes``. A present past day with recorded
   hours below that gets SHORT_HOURS; an in time later than shift start + grace gets LATE_ARRIVAL.
 * Hours totals are compared only over days whose hours are recorded (``hours_days``,
@@ -140,10 +142,19 @@ class Summary:
         return round(self.net_minutes / self.hours_days)
 
     @property
+    def counted_days(self) -> int:
+        """Days the attendance rate is taken over: the expected days plus days worked in the office on a holiday or
+        an off day (the same working days the WFO figures use), so a day in the office always counts."""
+        return self.expected_days + self.extra_present_days
+
+    @property
     def attendance_percentage(self) -> float | None:
-        if self.expected_days == 0:
-            return None
-        return round(self.present_expected_days * 100 / self.expected_days, 1)
+        return attendance_rate(self.present_expected_days + self.extra_present_days, self.counted_days)
+
+
+def attendance_rate(present: int, counted: int) -> float | None:
+    """Office days out of the days counted (expected days plus office days on holidays / off days)."""
+    return round(present * 100 / counted, 1) if counted else None
 
 
 def resolve_schedule(schedules: Sequence[ScheduleData], employee: EmployeeData, d: date) -> ScheduleData | None:

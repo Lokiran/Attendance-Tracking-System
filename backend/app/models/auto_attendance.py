@@ -106,6 +106,9 @@ class WifiEvent(Base):
     )
     source: Mapped[str] = mapped_column(String(32), nullable=False)  # adapter: mock, radius, cisco, aruba, meraki
     access_point: Mapped[str | None] = mapped_column(String(64))  # which AP / site; presence only
+    # Which office the sighting was in, and which registered device it came from (migration 0006).
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("office_sites.id", ondelete="SET NULL"))
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: clock.utcnow(), nullable=False)
 
 

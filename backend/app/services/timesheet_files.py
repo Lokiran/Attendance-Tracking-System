@@ -213,6 +213,42 @@ def _unglue_date(cells: list, date_at: int | None) -> None:
         cells[date_at - 1], cells[date_at] = m.group(1).strip(), m.group(2)
 
 
+# Header labels printed without a gap come out as one word ("Time InTime OutTotal Hrs"): split where a new
+# capitalised label starts straight after a letter or digit.
+_GLUED_LABELS = re.compile(r"(?<=[a-z0-9.)])(?=[A-Z])")
+
+
+def _split_header_words(row: list[_Word], mapping) -> list[_Word]:
+    """Split a header word that is several column labels run together, when every piece is a known column.
+    Each piece gets a share of the word's width in proportion to its length."""
+    out: list[_Word] = []
+    for w in row:
+        pieces = [p.strip() for p in _GLUED_LABELS.split(w.text) if p.strip()]
+        if mapping.column(w.text) or len(pieces) < 2 or not all(mapping.column(p) for p in pieces):
+            out.append(w)
+            continue
+        total, at = sum(len(p) for p in pieces), w.x0
+        for p in pieces:
+            width = (w.x1 - w.x0) * len(p) / total
+            out.append(_Word(at, at + width, w.y, p))
+            at += width
+    return out
+
+
+# "23747Ajay Sakharia": a right-aligned ID runs straight into the left-aligned name next to it. An ID with a
+# word after a hyphen ("25022-NexerGopalKrishna Bhat") ends where the name's first capital starts.
+_GLUED_ID = re.compile(r"^(\d[\d/.]*-[A-Za-z0-9]*?[a-z0-9](?=[A-Z])|\d[\d\-/.]*)\s*([^\W\d_].*)$")
+
+
+def _unglue_id(cells: list, emp_at: int | None, name_at: int | None) -> None:
+    """When the ID cell is empty and the name cell starts with a number, move the number to the ID cell."""
+    if emp_at is None or name_at is None or emp_at >= len(cells) or name_at >= len(cells) or cells[emp_at] is not None:
+        return
+    m = _GLUED_ID.match(cells[name_at]) if isinstance(cells[name_at], str) else None
+    if m:
+        cells[emp_at], cells[name_at] = m.group(1), m.group(2).strip()
+
+
 def _pdf_table(content: bytes) -> list[list]:
     try:
         from pdfminer.high_level import extract_pages
@@ -224,6 +260,8 @@ def _pdf_table(content: bytes) -> list[list]:
     header_texts: list[str] | None = None
     bounds: list[tuple[float, float]] = []
     date_at: int | None = None
+    emp_at: int | None = None
+    name_at: int | None = None
     any_text = False
     try:
         pages = list(extract_pages(io.BytesIO(content)))
@@ -233,11 +271,13 @@ def _pdf_table(content: bytes) -> list[list]:
         rows = _rows_by_height(_page_words(page))
         any_text = any_text or bool(rows)
         for row in rows:
-            texts = [w.text for w in row]
             if header_texts is None:
+                row = _split_header_words(row, mapping)
+                texts = [w.text for w in row]
                 cols = map_header(texts, mapping)
                 if "employee" in cols and "date" in cols:
                     header_texts, bounds, date_at = texts, _bounds(row), cols["date"]
+                    emp_at, name_at = cols["employee"], cols.get("name")
                     out.append(list(texts))
                 continue
             cells: list = [None] * len(header_texts)
@@ -246,9 +286,10 @@ def _pdf_table(content: bytes) -> list[list]:
                     if lo <= w.center < hi:
                         cells[i] = w.text if cells[i] is None else f"{cells[i]} {w.text}"
                         break
-            if cells == header_texts:
+            if cells == header_texts or [w.text for w in _split_header_words(row, mapping)] == header_texts:
                 continue  # the header again on a new page
             _unglue_date(cells, date_at)
+            _unglue_id(cells, emp_at, name_at)
             if any(c is not None for c in cells):
                 out.append(cells)
     if not any_text:

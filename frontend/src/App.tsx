@@ -18,6 +18,7 @@ const DepartmentsAdmin = lazy(() => import("@/pages/admin/DepartmentsAdmin").the
 const EmployeesAdmin = lazy(() => import("@/pages/admin/EmployeesAdmin").then((m) => ({ default: m.EmployeesAdmin })));
 const HierarchyPage = lazy(() => import("@/pages/admin/HierarchyPage").then((m) => ({ default: m.HierarchyPage })));
 const HolidaysAdmin = lazy(() => import("@/pages/admin/HolidaysAdmin").then((m) => ({ default: m.HolidaysAdmin })));
+const DevicesAdmin = lazy(() => import("@/pages/admin/DevicesAdmin").then((m) => ({ default: m.DevicesAdmin })));
 const OrgDashboard = lazy(() => import("@/pages/admin/OrgDashboard").then((m) => ({ default: m.OrgDashboard })));
 const PolicyAdmin = lazy(() => import("@/pages/admin/PolicyAdmin").then((m) => ({ default: m.PolicyAdmin })));
 const SchedulesAdmin = lazy(() => import("@/pages/admin/SchedulesAdmin").then((m) => ({ default: m.SchedulesAdmin })));
@@ -75,6 +76,7 @@ export function AppRoutes() {
               <Route path="admin/departments/:id/dashboard" element={<DepartmentDashboardPage />} />
               <Route path="admin/schedules" element={<SchedulesAdmin />} />
               <Route path="admin/holidays" element={<HolidaysAdmin />} />
+              <Route path="admin/devices" element={<DevicesAdmin />} />
               <Route path="admin/policy" element={<PolicyAdmin />} />
               <Route path="admin/audit" element={<AuditLogPage />} />
             </Route>

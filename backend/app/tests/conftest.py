@@ -18,6 +18,11 @@ from datetime import UTC, date, datetime, time
 from pathlib import Path
 
 _tmp = Path(tempfile.mkdtemp(prefix="ats-tests-"))
+# Tests run on their own settings only: a developer's backend/.env (or .env.sqlite) must not change them
+# (dev sign-in, branding, Microsoft sign-in ...). Settings come from the variables below and the defaults.
+_empty_env = _tmp / "empty.env"
+_empty_env.write_text("", encoding="utf-8")
+os.environ["ATS_ENV_FILE"] = str(_empty_env)
 _TEST_DB_URL = os.environ.get("TEST_DATABASE_URL")
 os.environ["APP_ENV"] = "test"
 os.environ["DATABASE_URL"] = _TEST_DB_URL or f"sqlite:///{_tmp / 'test.db'}"

@@ -42,6 +42,12 @@ def current_status(db: Session, employee: User) -> dict:
     }
 
 
+def shift_for(db: Session, employee: User, day: date):
+    """The work schedule that applies to the employee on a day (None when nothing applies)."""
+    schedules = [schedule_data(s) for s in db.scalars(select(WorkSchedule))]
+    return resolve_schedule(schedules, employee_data(employee), day)
+
+
 def timesheet_row(db: Session, employee_id: int, day: date) -> AttendanceDaily | None:
     return db.scalar(select(AttendanceDaily).where(AttendanceDaily.employee_id == employee_id,
                                                    AttendanceDaily.work_date == day))

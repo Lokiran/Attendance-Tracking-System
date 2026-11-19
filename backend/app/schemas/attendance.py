@@ -52,6 +52,7 @@ class SummaryOut(BaseModel):
     variance_minutes: int           # net_minutes - hours_required_minutes
     average_net_minutes: int | None
     attendance_percentage: float | None
+    counted_days: int = 0           # the rate's days: expected days + office days on holidays / off days
     late_days: int
     # WFO figures for the same range (wfo_days, wfh_days, wfo_percentage, weekly breakdown, compliance ...)
     wfo: WfoRangeSummary | None = None
@@ -66,7 +67,7 @@ class SummaryOut(BaseModel):
             no_timesheet_days=s.no_timesheet_days, net_minutes=s.net_minutes, required_minutes=s.required_minutes,
             hours_days=s.hours_days, hours_required_minutes=s.hours_required_minutes,
             variance_minutes=s.variance_minutes, average_net_minutes=s.average_net_minutes,
-            attendance_percentage=s.attendance_percentage, late_days=s.late_days,
+            attendance_percentage=s.attendance_percentage, counted_days=s.counted_days, late_days=s.late_days,
         )
 
 
@@ -108,6 +109,8 @@ class TimesheetEntryOut(BaseModel):
 class DayDetailOut(BaseModel):
     record: DayRecordOut | None
     timesheet: TimesheetEntryOut | None
+    shift: ScheduleBrief | None = None     # the schedule that applies on that day
+    late_grace_minutes: int = 0            # arriving later than shift start + grace counts as late
 
 
 class DaysPage(BaseModel):

@@ -1,3 +1,4 @@
+import { clsx } from "clsx";
 import { BarChart3, Table2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -11,7 +12,10 @@ export interface TableView {
 }
 
 /** Frame for every chart: title, loading/error/empty states, and an accessible table view. */
-export function ChartCard({ title, subtitle, actions, loading, error, onRetry, isEmpty, emptyText, table, height = 260, children, legend }: {
+export function ChartCard({ title, subtitle, actions, loading, error, onRetry, isEmpty, emptyText, table, height = 260, children, legend, footer, id, className }: {
+  footer?: ReactNode;
+  id?: string;
+  className?: string;
   title: string;
   subtitle?: ReactNode;
   actions?: ReactNode;
@@ -62,11 +66,12 @@ export function ChartCard({ title, subtitle, actions, loading, error, onRetry, i
       <div className="px-2 pb-3 pt-2">
         {legend && <div className="px-3 pb-2">{legend}</div>}
         <div style={{ height }}>{children}</div>
+        {footer}
       </div>
     );
 
   return (
-    <Card className="flex min-w-0 flex-col">
+    <Card id={id} className={clsx("flex min-w-0 scroll-mt-24 flex-col", className)}>
       <CardHeader
         title={title}
         subtitle={subtitle}

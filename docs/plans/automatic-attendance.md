@@ -1,5 +1,11 @@
 # Automatic attendance: TODO
 
+> **Status (2026-11-16): on hold.** Since 2026-11-10 attendance comes only from the monthly timesheets HR
+> imports (see [../wfo.md](../wfo.md)); there is no check-in or check-out. Phase 1 (schema, settings, Entra
+> sign-in) is in the code and switched off by default. Phases 2–5 below wait for a decision to resume.
+> **2026-11-17:** office Wi-Fi presence continues in [wifi-attendance.md](wifi-attendance.md) (device register
+> keyed by serial number, Wi-Fi log import); that plan replaces Phases 2–3 below for Wi-Fi.
+
 Goal: employees no longer check in or out. Office hours come from Wi-Fi sessions, WFH hours from
 Microsoft Teams presence. Work goes one phase at a time; each phase ends with tests, an update of this
 file, a summary and the exact commands, then waits for "continue".

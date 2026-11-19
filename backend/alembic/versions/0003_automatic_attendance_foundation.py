@@ -1,7 +1,7 @@
 """automatic attendance foundation
 
 Replaces the unused auto-attendance groundwork of 0002 with the tables of the automatic attendance
-design (TODO.md, Phase 1):
+design (docs/plans/automatic-attendance.md, Phase 1):
 
 * wifi_events / presence_events: one row per person per time bucket (unique), so collectors can
   re-run safely. Presence and duration only.

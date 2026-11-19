@@ -19,6 +19,7 @@ from app.schemas.attendance import (
 )
 from app.schemas.dashboard import TrendsOut
 from app.services import attendance_export, attendance_service, wfo
+from app.services.configuration import get_policy
 from app.services.dashboard import bucketize
 from app.services.scope import get_viewable_employee
 
@@ -101,4 +102,11 @@ def employee_day(employee_id: int, day: date, user: CurrentUser, db: DB):
             overridden_by_name=by.full_name if by else None, overridden_at=row.overridden_at,
             conflicts=list(row.conflicts or []),
         )
-    return DayDetailOut(record=DayRecordOut.of(records[0]) if records else None, timesheet=entry)
+    sched = attendance_service.shift_for(db, employee, day)
+    return DayDetailOut(
+        record=DayRecordOut.of(records[0]) if records else None, timesheet=entry,
+        shift=ScheduleBrief(name=sched.name, start_time=sched.start_time, end_time=sched.end_time,
+                            required_minutes=sched.required_minutes, working_days=sorted(sched.working_days))
+        if sched else None,
+        late_grace_minutes=get_policy(db).late_grace_minutes,
+    )

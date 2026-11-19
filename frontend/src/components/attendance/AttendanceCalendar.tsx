@@ -77,7 +77,9 @@ export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectD
               const label = formatDate(d) + (rec ? ": " + STATUS_LABEL[rec.status] + (rec.hours_known ? ", " + formatMinutes(rec.net_minutes) : "") : isFuture ? ": upcoming" : "");
               const off = rec && (rec.status === "WEEKEND" || rec.status === "NOT_SCHEDULED");
               // A soft tint of the status colour, so the month reads at a glance (the icon and label still carry it).
-              const tint = rec && !off && !isFuture && TINTED.has(rec.status) ? `color-mix(in srgb, ${meta!.color} 11%, transparent)` : undefined;
+              const tinted = rec && !off && !isFuture && TINTED.has(rec.status);
+              const tint = tinted ? `color-mix(in srgb, ${meta!.color} var(--cal-tint), transparent)` : undefined;
+              const ring = tinted ? `color-mix(in srgb, ${meta!.color} var(--cal-ring), transparent)` : undefined;
               // "Absent" is already the status: only flag other exceptions (late, short hours, ...).
               const flagged = rec ? rec.exceptions.some((e) => e !== "ABSENT") : false;
               return (
@@ -88,7 +90,7 @@ export function AttendanceCalendar({ employeeId, month, onMonthChange, onSelectD
                   disabled={isFuture || !rec}
                   onClick={() => onSelectDay(d)}
                   aria-label={label}
-                  style={tint ? { background: tint } : undefined}
+                  style={tint ? { background: tint, borderColor: d === today ? undefined : ring } : undefined}
                   className={clsx(
                     "relative flex aspect-square min-h-11 flex-col items-start justify-between rounded-lg border p-1.5 text-left transition-colors sm:aspect-[4/3]",
                     d === today ? "border-brand" : tint ? "border-transparent" : "border-line",

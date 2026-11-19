@@ -158,7 +158,7 @@ export function TeamDashboardView({ scope, title, description, breadcrumb, extra
           loading={trend.isLoading}
           error={trend.error}
           isEmpty={!trend.data?.items.some((b) => b.expected)}
-          table={{ columns: ["Period", "Attendance", "Present/expected", "Avg office hours/day"], rows: (trend.data?.items ?? []).map((b) => [b.label, formatPercent(b.attendance_percentage), `${b.present_expected}/${b.expected}`, formatMinutes(b.average_net_minutes)]) }}
+          table={{ columns: ["Period", "Attendance", "Office days / days counted", "Avg office hours/day"], rows: (trend.data?.items ?? []).map((b) => [b.label, formatPercent(b.attendance_percentage), `${b.present_expected}/${b.expected}`, formatMinutes(b.average_net_minutes)]) }}
         >
           <AttendanceTrendChart items={trend.data?.items ?? []} onSelect={(b) => setRange({ start: b.start, end: minDate(b.end, today) })} />
         </ChartCard>
@@ -184,7 +184,7 @@ export function TeamDashboardView({ scope, title, description, breadcrumb, extra
           error={lowAttendance.error}
           isEmpty={!byAttendance.some((r) => r.period.attendance_percentage !== null)}
           height={Math.max(200, byAttendance.length * 30)}
-          table={{ columns: ["Employee", "Attendance", "Present/expected"], rows: byAttendance.map((r) => [r.full_name, formatPercent(r.period.attendance_percentage), `${r.period.present_expected_days}/${r.period.expected_days}`]) }}
+          table={{ columns: ["Employee", "Attendance", "Office days / days counted"], rows: byAttendance.map((r) => [r.full_name, formatPercent(r.period.attendance_percentage), `${r.period.present_days}/${r.period.counted_days ?? r.period.expected_days}`]) }}
         >
           <RankedBarChart unit="%" max={100} data={byAttendance.map((r) => ({ id: r.employee_id, label: r.full_name, value: r.period.attendance_percentage }))} onSelect={(id) => navigate(employeeLink(Number(id)))} />
         </ChartCard>

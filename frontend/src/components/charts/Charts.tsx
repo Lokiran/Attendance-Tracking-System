@@ -8,6 +8,7 @@ import {
   LabelList,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -15,7 +16,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatDate, formatMinutes, STATUS_LABEL } from "@/lib/format";
+import { clockTime, formatDate, formatMinutes, minutesOfDay, signedMinutes, STATUS_LABEL } from "@/lib/format";
 import type { DayRecord, DayStatus, MonthSummary, TrendBucket, WfoBand } from "@/lib/types";
 
 import { STATUS_META } from "../ui/StatusBadge";
@@ -106,9 +107,11 @@ export function OfficeDaysByMonthChart({ months, onSelect }: { months: MonthSumm
 }
 
 /** Net hours per day (single series) with the required hours as a dashed reference. */
-export function DailyHoursChart({ days, onSelectDay }: { days: DayRecord[]; onSelectDay?: (date: string) => void }) {
-  const data = days.map((d) => ({ ...d, hours: +(d.net_minutes / 60).toFixed(2) }));
+export function DailyHoursChart({ days, onSelectDay, averageMinutes }: { days: DayRecord[]; onSelectDay?: (date: string) => void; averageMinutes?: number | null }) {
+  // Working days (and any day with hours): weekends without hours would only add empty slots.
+  const data = days.filter((d) => d.scheduled_workday || d.net_minutes > 0).map((d) => ({ ...d, hours: +(d.net_minutes / 60).toFixed(2) }));
   const required = Math.max(0, ...days.map((d) => d.required_minutes)) / 60;
+  const avg = averageMinutes ? averageMinutes / 60 : null;
   return (
     <ResponsiveContainer>
       <BarChart data={data} margin={{ top: 8, right: 60, bottom: 0, left: -12 }}>
@@ -132,7 +135,10 @@ export function DailyHoursChart({ days, onSelectDay }: { days: DayRecord[]; onSe
           }
         />
         {required > 0 && (
-          <ReferenceLine y={required} stroke="var(--text-3)" strokeDasharray="4 4" label={{ value: "Required", position: "right", fill: "var(--text-3)", fontSize: 11 }} />
+          <ReferenceLine y={required} stroke="var(--text-3)" strokeDasharray="4 4" label={{ value: "Shift", position: "right", fill: "var(--text-3)", fontSize: 11 }} />
+        )}
+        {avg !== null && Math.abs(avg - required) > 0.75 && ( /* closer than that, the two labels would collide */
+          <ReferenceLine y={avg} stroke="var(--series-1)" strokeDasharray="2 3" label={{ value: "Your avg", position: "right", fill: "var(--text-2)", fontSize: 11 }} />
         )}
         <Bar
           dataKey="hours"
@@ -143,6 +149,64 @@ export function DailyHoursChart({ days, onSelectDay }: { days: DayRecord[]; onSe
           cursor={onSelectDay ? "pointer" : undefined}
           onClick={(d: any) => onSelectDay?.(d?.payload?.date ?? d?.date)}
         />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Arrival to leaving per day as a floating bar (one series), over the shift window drawn as a band, with the
+ *  late-arrival line. Time of day runs downwards like a day planner. */
+export function InOutChart({ days, shift, graceMinutes = 0, onSelectDay }: {
+  days: DayRecord[];
+  shift?: { start: number; end: number } | null;
+  graceMinutes?: number;
+  onSelectDay?: (date: string) => void;
+}) {
+  const data = days
+    .map((d) => ({ ...d, inMin: minutesOfDay(d.first_in), outMin: minutesOfDay(d.last_out) }))
+    .filter((d) => d.inMin !== null)
+    .map((d) => ({ ...d, range: [d.inMin!, d.outMin !== null && d.outMin > d.inMin! ? d.outMin : d.inMin! + 10] as [number, number] }));
+  const lows = data.map((d) => d.range[0]).concat(shift ? [shift.start] : []);
+  const highs = data.map((d) => d.range[1]).concat(shift ? [shift.end] : []);
+  const lo = Math.max(0, Math.floor((Math.min(...lows) - 30) / 60) * 60);
+  const hi = Math.min(24 * 60, Math.ceil((Math.max(...highs) + 30) / 60) * 60);
+  const ticks: number[] = [];
+  for (let t = lo; t <= hi; t += hi - lo > 10 * 60 ? 120 : 60) ticks.push(t);
+  const hourLabel = (m: number) => clockTime(m).replace(":00", "").replace(/^0/, "");
+  const lateAfter = shift ? shift.start + graceMinutes : null;
+  return (
+    <ResponsiveContainer>
+      <BarChart data={data} margin={{ top: 8, right: 64, bottom: 0, left: 4 }}>
+        {grid}
+        <XAxis dataKey="date" tickFormatter={shortDate} {...axis} minTickGap={16} />
+        <YAxis {...axis} reversed domain={[lo, hi]} ticks={ticks} tickFormatter={hourLabel} width={48} />
+        {shift && (
+          <ReferenceArea y1={shift.start} y2={shift.end} fill="var(--surface-3)" fillOpacity={0.7} ifOverflow="extendDomain"
+            label={{ value: "Shift", position: "right", fill: "var(--text-3)", fontSize: 11 }} />
+        )}
+        {lateAfter !== null && (
+          <ReferenceLine y={lateAfter} stroke="var(--serious)" strokeDasharray="4 4"
+            label={{ value: "Late after", position: "right", fill: "var(--text-3)", fontSize: 11 }} />
+        )}
+        <Tooltip
+          cursor={cursor}
+          content={
+            <Tip
+              title={(l) => formatDate(l, { weekday: "short" })}
+              rows={(p) => {
+                const d = p[0].payload as DayRecord & { inMin: number; outMin: number | null };
+                return [
+                  { label: "In", value: clockTime(d.inMin), color: "var(--series-1)" },
+                  { label: "Out", value: d.outMin !== null ? clockTime(d.outMin) : "—" },
+                  { label: "Office hours", value: d.hours_known ? formatMinutes(d.net_minutes) : "Not recorded" },
+                  ...(lateAfter !== null ? [{ label: "Arrival", value: d.inMin > lateAfter ? signedMinutes(d.inMin - (shift?.start ?? 0), "after shift start") : "On time" }] : []),
+                ];
+              }}
+            />
+          }
+        />
+        <Bar dataKey="range" name="In to out" fill="var(--series-1)" radius={4} maxBarSize={18}
+          cursor={onSelectDay ? "pointer" : undefined} onClick={(d: any) => onSelectDay?.(d?.payload?.date ?? d?.date)} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -190,7 +254,7 @@ export function AttendanceTrendChart({ items, onSelect }: { items: TrendBucket[]
                 const b = p[0].payload as TrendBucket;
                 return [
                   { label: "Attendance", value: b.attendance_percentage === null ? "—" : b.attendance_percentage + "%", color: "var(--series-1)" },
-                  { label: "Present / expected days", value: b.present_expected + " / " + b.expected },
+                  { label: "Office days / days counted", value: b.present_expected + " / " + b.expected },
                   { label: "Avg net / day", value: formatMinutes(b.average_net_minutes) },
                 ];
               }}

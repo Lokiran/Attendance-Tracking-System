@@ -94,6 +94,8 @@ export interface Summary {
   variance_minutes: number;
   average_net_minutes: number | null;
   attendance_percentage: number | null;
+  /** Days the rate is taken over: expected days plus office days on holidays / off days. */
+  counted_days?: number;
   late_days: number;
   /** WFO figures for the same range (office days against the requirement, weekly breakdown). */
   wfo?: (WfoSummary & { weekly_wfo_breakdown: WfoWeek[] }) | null;
@@ -132,9 +134,20 @@ export interface TimesheetEntry {
   conflicts: string[];
 }
 
+export interface ShiftBrief {
+  name: string;
+  start_time: string; // "09:30:00"
+  end_time: string;
+  required_minutes: number;
+  working_days: number[];
+}
+
 export interface DayDetail {
   record: DayRecord | null;
   timesheet: TimesheetEntry | null;
+  /** The schedule that applies on that day, and the grace after its start before an arrival counts as late. */
+  shift?: ShiftBrief | null;
+  late_grace_minutes?: number;
 }
 
 export interface TrendBucket {
@@ -186,6 +199,7 @@ export interface PeriodStats {
   variance_minutes: number;
   average_net_minutes: number | null;
   attendance_percentage: number | null;
+  counted_days?: number;
 }
 export interface Overview {
   generated_at: string;
@@ -556,4 +570,72 @@ export interface MonthSummary {
   absent_days: number;
   attendance_percentage: number | null;
   average_net_minutes: number | null;
+}
+
+/** An office with its own Wi-Fi network (Wi-Fi presence is reported per office). */
+export interface OfficeSite {
+  id: number;
+  name: string;
+  code: string;
+  network_name: string | null;
+  address: string | null;
+  is_active: boolean;
+}
+
+/** A device in the register: the shared Wi-Fi password means people are recognised through their laptop. */
+export interface Device {
+  id: number;
+  serial_number: string | null;
+  mac_address: string | null;
+  /** A private / random Wi-Fi address: it can change and does not identify the laptop. */
+  random_mac: boolean;
+  asset_tag: string | null;
+  hostname: string | null;
+  model: string | null;
+  user: { id: number; employee_code: string; full_name: string } | null;
+  is_active: boolean;
+  source: "MANUAL" | "IMPORT" | "LEGACY" | string;
+  notes: string | null;
+  updated_at: string;
+}
+
+export interface RegisterSummary {
+  devices: number;
+  with_mac: number;
+  without_mac: number;
+  unassigned: number;
+  random_mac: number;
+  people_tracked: number;
+  /** Tracked people with at least one active device that has a MAC address. */
+  people_with_device: number;
+  sites: number;
+}
+
+export interface DeviceImportItem {
+  row: number;
+  action: "create" | "update" | "unchanged" | "error";
+  serial_number: string | null;
+  mac_address: string | null;
+  hostname: string | null;
+  owner: string | null;
+  owner_code: string | null;
+  owner_written: string | null;
+  changes: string[];
+  problems: string[];
+}
+
+export interface DeviceImportResult {
+  applied: boolean;
+  sheet: string | null;
+  columns: Record<string, string>;
+  rows: number;
+  blank_rows: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  errors: number;
+  with_mac: number;
+  random_mac: number;
+  unknown_owners: { written: string; rows: number }[];
+  items: DeviceImportItem[];
 }

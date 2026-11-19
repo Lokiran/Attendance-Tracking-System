@@ -1,5 +1,10 @@
 # Feature roadmap: standalone attendance system
 
+> **Historical record.** This roadmap followed the original spec. Since 2026-11-10 attendance comes from
+> imported timesheets: check-in / check-out, attendance corrections, leave requests and approvals were
+> removed. Rows about them describe what was built then, not the current app. Current open work:
+> [production-readiness.md](production-readiness.md).
+
 Source: *Must-Have Features: Organization Attendance Tracking System* (4 pages).
 We build **one feature at a time**. Each feature is agreed, built, verified and merged before the next one starts.
 
@@ -207,7 +212,7 @@ before auto-close and notifications; the payroll lock is needed before the payro
 ---
 
 ## After day one (deferred)
-- Automatic attendance (Wi-Fi / Teams): in progress, phase by phase; checklist in `TODO.md` (Phase 1 done)
+- Automatic attendance (Wi-Fi / Teams): in progress, phase by phase; checklist in [automatic-attendance.md](automatic-attendance.md) (Phase 1 done)
 - ⏸ Geofencing or QR check-in
 - ⏸ Biometric / kiosk integration
 - ⏸ Payroll / HRMS API integration

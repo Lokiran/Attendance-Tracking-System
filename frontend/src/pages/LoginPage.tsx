@@ -4,7 +4,6 @@ import {
   AlertCircle,
   BarChart3,
   CalendarCheck,
-  CheckCircle2,
   ChevronDown,
   Eye,
   EyeOff,
@@ -52,39 +51,10 @@ const FEATURES: { icon: typeof FileSpreadsheet; title: string; text: string }[] 
   { icon: Users, title: "A view for every role", text: "Employees see their month, managers their team, HR the whole organisation." },
 ];
 
-/** Decorative preview of the WFO target panel (example figures, clearly labelled). */
-function ExamplePanel() {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4" aria-hidden>
-      <div className="flex items-center justify-between text-xs text-on-secondary-muted">
-        <span>Work from office · example</span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-on-secondary">
-          <CheckCircle2 className="size-3.5" style={{ color: "var(--good)" }} /> On target
-        </span>
-      </div>
-      <div className="mt-2 flex items-baseline gap-1.5 text-on-secondary">
-        <span className="tabular text-3xl font-semibold">14</span>
-        <span className="text-sm text-on-secondary-muted">of 12 required days</span>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full w-full rounded-full" style={{ background: "var(--good)" }} />
-      </div>
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-on-secondary-muted">
-        {[["var(--good)", "12+ days"], ["var(--warning)", "up to 3 short"], ["var(--critical)", "more than 3 short"]].map(([c, t]) => (
-          <span key={t} className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full" style={{ background: c }} />{t}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function BrandPanel() {
   return (
-    <aside className="tone-secondary relative hidden overflow-hidden lg:flex lg:w-[46%] lg:flex-col lg:justify-between xl:w-1/2">
-      {/* soft accent glow, purely decorative */}
-      <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 size-96 rounded-full opacity-30 blur-3xl" style={{ background: "var(--brand)" }} />
-      <div aria-hidden className="pointer-events-none absolute -bottom-32 right-0 size-80 rounded-full opacity-20 blur-3xl" style={{ background: "var(--brand)" }} />
-      <div className="relative px-12 pt-12">
+    <aside className="tone-secondary hidden lg:flex lg:w-[46%] lg:flex-col lg:justify-between xl:w-1/2">
+      <div className="px-12 pt-12">
         <div className="flex items-center gap-3">
           <span className="inline-flex size-10 items-center justify-center rounded-xl bg-brand text-on-brand"><CalendarCheck className="size-5" aria-hidden /></span>
           <div>
@@ -107,10 +77,7 @@ function BrandPanel() {
           ))}
         </ul>
       </div>
-      <div className="relative px-12 pb-12">
-        <div className="max-w-sm"><ExamplePanel /></div>
-        <p className="mt-6 text-xs text-on-secondary-muted">© Nexa Technologies · Attendance tracking</p>
-      </div>
+      <p className="px-12 pb-12 text-xs text-on-secondary-muted">© Nexa Technologies · Attendance tracking</p>
     </aside>
   );
 }

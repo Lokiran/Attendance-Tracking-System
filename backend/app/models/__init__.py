@@ -7,6 +7,7 @@ from app.models.auto_attendance import (
     PresenceEvent,
     WifiEvent,
 )
+from app.models.devices import Device, OfficeSite
 from app.models.enums import (
     CorrectionType,
     DailyStatus,
@@ -31,6 +32,6 @@ __all__ = [
     "AttendanceDaily", "AttendanceDailyCorrection", "AttendanceUpload", "AttendanceUploadRow", "DailyStatus",
     "UploadStatus", "WfoSource", "WorkLocation", "WorkMode", "PresenceEvent", "WifiEvent", "WifiEventType",
     "AttendanceCorrection", "AttendancePolicy", "AttendanceSession", "AuditLog", "CorrectionType", "DayStatus",
-    "Department", "Holiday", "LeaveRecord", "LeaveType", "LoginAttempt", "RequestStatus", "Role",
+    "Department", "Device", "Holiday", "LeaveRecord", "LeaveType", "LoginAttempt", "OfficeSite", "RequestStatus", "Role",
     "SessionSource", "SessionStatus", "User", "UserSession", "WorkSchedule",
 ]

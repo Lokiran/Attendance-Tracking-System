@@ -13,7 +13,8 @@
  *                   what the user should act on       focus ring, progress)
  *
  * Status and chart colours are functional (they encode data), sit outside the 60-30-10 split and are
- * validated with the dataviz palette validator against --surface (light #ffffff, dark #151e2e).
+ * validated with the dataviz palette validator against --surface (light #ffffff, dark #151e2e; the dark
+ * surface is now #121a29, slightly darker, which only raises their contrast).
  * Text/background pairs are checked for WCAG contrast (text >= 4.5:1, indicators >= 3:1).
  */
 :root {
@@ -72,40 +73,44 @@
   --st-pending: #94a3b8;
   --st-wfh: #0891b2;       /* validated vs present / absent / leave and the WFO office blue */
   --st-leave: #eda100;
+  --band: var(--secondary);
+  --band-ring: transparent;
+  --cal-tint: 11%;
+  --cal-ring: 0%;
 }
 
 /* Explicit dark theme (selected with the theme button) */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0b1220;
-  --surface: #151e2e;
-  --surface-2: #1b2638;
-  --surface-3: #22304a;
-  --border: #263244;
-  --border-strong: #354561;
-  --text: #e2e8f0;
-  --text-2: #a9b6c9;
-  --text-3: #8492a8;
-  --shadow-card: none;
-  --secondary: #1d2a44;
-  --secondary-raised: #26365a;
-  --secondary-line: #2b3b5c;
+  --bg: #080d16;
+  --surface: #121a29;
+  --surface-2: #18223a;
+  --surface-3: #212e48;
+  --border: #212c40;
+  --border-strong: #33425c;
+  --text: #e6ecf4;
+  --text-2: #b3bfd0;
+  --text-3: #8a97ac;
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -14px rgba(0, 0, 0, 0.7);
+  --secondary: #0c1321;
+  --secondary-raised: #172238;
+  --secondary-line: #1c283e;
   --on-secondary: #e2e8f0;
   --on-secondary-muted: #94a3b8;
-  --secondary-soft: #1b2638;
+  --secondary-soft: #172033;
   --on-secondary-2: #cbd5e1;
-  --secondary-line-strong: #3a4c70;
+  --secondary-line-strong: #2d3d5c;
   --brand: #60a5fa;
   --brand-hover: #93c5fd;
-  --brand-soft: #172554;
+  --brand-soft: #14213f;
   --brand-text: #93c5fd;
   --on-brand: #0b1220;
   --accent-on-secondary: #60a5fa;
   --focus: #60a5fa;
   --critical-text: #f08a8a;
   --good-text: #4cc94c;
-  --chart-grid: #223047;
-  --chart-axis: #8492a8;
+  --chart-grid: #1d2940;
+  --chart-axis: #8a97ac;
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
@@ -117,41 +122,45 @@
   --st-pending: #64748b;
   --st-wfh: #13a59a;       /* validated vs present / absent / leave and the WFO office blue */
   --st-leave: #c98500;
+  --band: radial-gradient(120% 140% at 0% 0%, #1d3266 0%, rgba(29, 50, 102, 0) 55%), linear-gradient(135deg, #15213a 0%, #101827 100%);
+  --band-ring: rgba(148, 163, 184, 0.14);
+  --cal-tint: 9%;
+  --cal-ring: 28%;
 }
 
 /* "System" theme: follow the OS only when no explicit theme is chosen */
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
     color-scheme: dark;
-    --bg: #0b1220;
-    --surface: #151e2e;
-    --surface-2: #1b2638;
-    --surface-3: #22304a;
-    --border: #263244;
-    --border-strong: #354561;
-    --text: #e2e8f0;
-    --text-2: #a9b6c9;
-    --text-3: #8492a8;
-    --shadow-card: none;
-    --secondary: #1d2a44;
-    --secondary-raised: #26365a;
-    --secondary-line: #2b3b5c;
+    --bg: #080d16;
+    --surface: #121a29;
+    --surface-2: #18223a;
+    --surface-3: #212e48;
+    --border: #212c40;
+    --border-strong: #33425c;
+    --text: #e6ecf4;
+    --text-2: #b3bfd0;
+    --text-3: #8a97ac;
+    --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -14px rgba(0, 0, 0, 0.7);
+    --secondary: #0c1321;
+    --secondary-raised: #172238;
+    --secondary-line: #1c283e;
     --on-secondary: #e2e8f0;
     --on-secondary-muted: #94a3b8;
-    --secondary-soft: #1b2638;
+    --secondary-soft: #172033;
     --on-secondary-2: #cbd5e1;
-    --secondary-line-strong: #3a4c70;
+    --secondary-line-strong: #2d3d5c;
     --brand: #60a5fa;
     --brand-hover: #93c5fd;
-    --brand-soft: #172554;
+    --brand-soft: #14213f;
     --brand-text: #93c5fd;
     --on-brand: #0b1220;
     --accent-on-secondary: #60a5fa;
     --focus: #60a5fa;
     --critical-text: #f08a8a;
     --good-text: #4cc94c;
-    --chart-grid: #223047;
-    --chart-axis: #8492a8;
+    --chart-grid: #1d2940;
+    --chart-axis: #8a97ac;
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
@@ -163,7 +172,11 @@
     --st-pending: #64748b;
     --st-wfh: #13a59a;       /* validated vs present / absent / leave and the WFO office blue */
     --st-leave: #c98500;
-  }
+    --band: radial-gradient(120% 140% at 0% 0%, #1d3266 0%, rgba(29, 50, 102, 0) 55%), linear-gradient(135deg, #15213a 0%, #101827 100%);
+    --band-ring: rgba(148, 163, 184, 0.14);
+    --cal-tint: 9%;
+    --cal-ring: 28%;
+}
 }
 
 @theme inline {
@@ -226,7 +239,8 @@ body {
   --text-3: var(--on-secondary-muted);
   --brand-text: var(--accent-on-secondary);
   --shadow-card: none;
-  background-color: var(--secondary);
+  background: var(--band);
+  box-shadow: inset 0 0 0 1px var(--band-ring);
   color: var(--text);
 }
 

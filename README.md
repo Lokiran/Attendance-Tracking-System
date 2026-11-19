@@ -16,6 +16,7 @@ computed by the backend from database records.
 More detail:
 * [docs/ATTENDANCE_RULES.md](docs/ATTENDANCE_RULES.md): exact calculation rules.
 * [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): structure, security model, full API list.
+* [docs/README.md](docs/README.md): index of all docs, and where to change what.
 
 ## Features
 
@@ -32,7 +33,9 @@ More detail:
   * Summary cards: present, absent, WFH days, office hours (when the timesheet has hours), average per
     day, attendance %. Days listed without hours count as present with hours "not recorded".
   * Monthly calendar with each day's timesheet entry.
-  * Charts: daily office hours, 6-month trend, status distribution, actual vs required hours.
+  * Charts: office days by month against the target, daily office hours, status distribution, actual vs
+    required hours (the hours charts only when the timesheets have hours).
+  * Export my attendance as a PDF report (branding set in the backend settings), an Excel workbook or CSV.
   * Filterable, paginated history. Attendance is office presence; WFH days are working days but not
     office attendance; leave only comes from timesheets or HR overrides (no leave requests).
 * **Manager dashboard** (whole reporting subtree)
@@ -61,14 +64,33 @@ More detail:
 
 ```
 ATS/
-├── backend/            FastAPI app (app/), Alembic migrations, tests, requirements.txt,
-│                       .env.example (PostgreSQL), .env.sqlite.example (local SQLite),
-│                       data/ (local SQLite database files, git-ignored)
-├── frontend/           React app (src/), Vite config, tests, .env.example
+├── backend/
+│   ├── app/
+│   │   ├── api/routes/     HTTP endpoints (auth, attendance, dashboard, wfo, reports, admin, health)
+│   │   ├── services/       Business logic: attendance + WFO rules, timesheet reading/import, exports, scope
+│   │   ├── models/         Database tables (SQLAlchemy)
+│   │   ├── schemas/        Request / response shapes (Pydantic)
+│   │   ├── core/           Settings, security, errors, time helpers
+│   │   ├── db/             Database session and engine
+│   │   └── tests/          Pytest suite (tests/postgres/: PostgreSQL-only)
+│   ├── alembic/versions/   Schema migrations
+│   ├── config/             wfo_mapping.json (accepted column names and work-mode words)
+│   ├── data/               Local only, git-ignored: SQLite database, backups/, branding/ (report logo)
+│   ├── .env.example        PostgreSQL profile · .env.sqlite.example: local SQLite profile
+│   └── requirements.txt
+├── frontend/
+│   └── src/
+│       ├── pages/          One file per screen (admin/ and wfo/ grouped)
+│       ├── components/     attendance/, charts/, wfo/, layout/, ui/ (shared building blocks)
+│       ├── lib/            API client, queries, types, formatting, dates
+│       ├── auth/  hooks/   Sign-in state, URL filter state
+│       └── test/           Vitest suite
+├── docs/               Rules, architecture, WFO and imports; plans/ (open work, history).
+│                       Start at docs/README.md: it also maps "to change X, edit Y"
+├── scripts/            Setup, run, test and benchmark helpers (see scripts/README.md)
+├── samples/            Example import files
 ├── database/           PostgreSQL notes + Docker init script (creates ats_test)
-├── docs/               Attendance rules, architecture/security/API
-├── scripts/            setup.ps1 (prerequisites + install), run-local-sqlite.ps1 (SQLite profile),
-│                       test-postgres.ps1 (PostgreSQL verification), smoke_test.py (end-to-end checks)
+├── .github/            CI workflow
 ├── docker-compose.yml  Optional PostgreSQL
 ├── .env.example        Variables for docker compose
 └── README.md

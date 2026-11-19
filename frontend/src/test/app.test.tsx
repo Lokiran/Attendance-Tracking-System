@@ -172,10 +172,10 @@ describe("employee dashboard", () => {
   it("shows office days month by month and leaves out months before the first timesheet", async () => {
     const { calls } = mockApi({ "/auth/me": me(), ...employeeRoutes() });
     renderApp("/");
-    expect(await screen.findByText("Office days by month")).toBeInTheDocument();
+    expect(await screen.findByText("Month by month")).toBeInTheDocument();
     await waitFor(() => expect(calls.some((c) => c.path === "/attendance/employees/5/months")).toBe(true));
     const user = userEvent.setup();
-    const card = screen.getByText("Office days by month").closest("section, div.rounded-xl") as HTMLElement;
+    const card = screen.getByText("Month by month").closest("section, div.rounded-xl") as HTMLElement;
     await user.click(within(card).getByRole("button", { name: /table/i }));
     const table = await within(card).findByRole("table");
     expect(within(table).queryByText("Jul 2026")).not.toBeInTheDocument(); // no timesheet yet: not shown
@@ -233,8 +233,8 @@ describe("employee dashboard", () => {
     renderApp("/");
     expect(await screen.findByText(/Not in this timesheet/)).toBeInTheDocument();
     expect(screen.queryByRole("progressbar", { name: /average office hours/i })).not.toBeInTheDocument();
-    // No empty hours charts: the weekly WFO view takes their place.
-    expect(await screen.findByText("WFO progress by week")).toBeInTheDocument();
+    // No empty hours charts: the week-by-week view takes their place beside the calendar.
+    expect(await screen.findByText("Week by week")).toBeInTheDocument();
     expect(screen.queryByText("Actual vs required hours")).not.toBeInTheDocument();
     expect(screen.queryByText("Office hours per day")).not.toBeInTheDocument();
     expect(screen.queryByText(/short of the shift hours/)).not.toBeInTheDocument();
@@ -248,6 +248,60 @@ describe("employee dashboard", () => {
     expect(within(table).getAllByText("Present").length).toBeGreaterThan(0);
     expect(within(table).getByText("Absent")).toBeInTheDocument();
     expect(within(table).getByText("Not in the timesheet")).toBeInTheDocument();
+  });
+
+  it("filters the history from the attendance counts and opens the hours from the KPI panel", async () => {
+    const statuses: (string | null)[] = [];
+    mockApi({
+      "/auth/me": me(),
+      ...employeeRoutes(),
+      "/attendance/employees/5/days": (url: URL) => {
+        statuses.push(url.searchParams.get("status"));
+        return { items: [day("2026-10-26")], total: 1, page: 1, page_size: 10 };
+      },
+    });
+    Element.prototype.scrollIntoView = vi.fn();
+    renderApp("/");
+    const user = userEvent.setup();
+    await screen.findByText("77.8%");
+    const absent = screen.getByRole("button", { name: /^1\s*Absent$/ });
+    await user.click(absent);
+    expect(absent).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(statuses).toContain("ABSENT"));
+    expect(await screen.findByText(/showing 1 absent day/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(absent).toHaveAttribute("aria-pressed", "false");
+    // The hours panel opens the daily chart, which can switch to arrival and leaving times.
+    await user.click(screen.getByRole("button", { name: /Average office hours: show hours per day/ }));
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    await user.click(screen.getByRole("tab", { name: "In & out" }));
+    expect(await screen.findByText("Arrival and leaving")).toBeInTheDocument();
+  });
+
+  it("shows a day against the shift, with the week around it", async () => {
+    mockApi({
+      "/auth/me": me(),
+      ...employeeRoutes(),
+      "/attendance/employees/5/days/2026-10-26": {
+        record: day("2026-10-26", { net_minutes: 445, exceptions: ["LATE_ARRIVAL", "SHORT_HOURS"], first_in: "2026-10-26T04:22:00Z", last_out: "2026-10-26T11:47:00Z" }),
+        timesheet: { work_mode: "OFFICE", wfo_source: "UPLOAD_COLUMN", upload_work_mode: "OFFICE", upload_minutes: 445, badge_minutes: null,
+          first_in: "2026-10-26T04:22:00Z", last_out: "2026-10-26T11:47:00Z", upload_filename: "October 2026.pdf", override_work_mode: null,
+          override_note: null, overridden_by_name: null, overridden_at: null, conflicts: [] },
+        shift: { name: "General shift", start_time: "09:30:00", end_time: "18:30:00", required_minutes: 480, working_days: [1, 2, 3, 4, 5] },
+        late_grace_minutes: 15,
+      },
+    });
+    renderApp("/?day=2026-10-26");
+    const dialog = await screen.findByRole("dialog");
+    // 09:52 in (22 minutes after a 09:30 start), 17:17 out, 7h 25m: 35m short of the 8h shift.
+    expect(await within(dialog).findByText("09:52 am")).toBeInTheDocument();
+    expect(within(dialog).getByText("22m after shift start")).toBeInTheDocument();
+    expect(within(dialog).getByText("1h 13m before shift end")).toBeInTheDocument();
+    expect(within(dialog).getByText("35m short of the 8h 00m shift")).toBeInTheDocument();
+    expect(within(dialog).getByRole("img", { name: /In 09:52 am, out 05:17 pm; shift 09:30 am to 06:30 pm/ })).toBeInTheDocument();
+    expect(within(dialog).getByText(/Late arrival: in after 09:45 am/)).toBeInTheDocument();
+    expect(within(dialog).getByText("That week")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Previous day" })).toBeInTheDocument();
   });
 
   it("shows the timesheet entry behind a day", async () => {

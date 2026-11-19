@@ -1,3 +1,4 @@
+import { clsx } from "clsx";
 import { useState } from "react";
 
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -31,16 +32,30 @@ const COLUMNS: Column<DayRecord>[] = [
   },
 ];
 
-export function AttendanceHistoryTable({ employeeId, start, end, onSelectDay, actions }: {
+export function AttendanceHistoryTable({ employeeId, start, end, onSelectDay, actions, filter, onFilter, id, className }: {
   employeeId: number;
   start: string;
   end: string;
   onSelectDay: (date: string) => void;
   actions?: React.ReactNode;
+  /** Controlled filters (the dashboard's KPI counts set them); uncontrolled when left out. */
+  filter?: { status: DayStatus | ""; exceptions: boolean };
+  onFilter?: (f: { status: DayStatus | ""; exceptions: boolean }) => void;
+  id?: string;
+  className?: string;
 }) {
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState<DayStatus | "">("");
-  const [exceptionsOnly, setExceptionsOnly] = useState(false);
+  const [ownStatus, setOwnStatus] = useState<DayStatus | "">("");
+  const [ownExceptions, setOwnExceptions] = useState(false);
+  const status = filter ? filter.status : ownStatus;
+  const exceptionsOnly = filter ? filter.exceptions : ownExceptions;
+  const setStatus = (s: DayStatus | "") => (onFilter ? onFilter({ status: s, exceptions: exceptionsOnly }) : setOwnStatus(s));
+  const setExceptionsOnly = (v: boolean) => (onFilter ? onFilter({ status, exceptions: v }) : setOwnExceptions(v));
+  const [lastFilter, setLastFilter] = useState(`${status}|${exceptionsOnly}`);
+  if (lastFilter !== `${status}|${exceptionsOnly}`) {
+    setLastFilter(`${status}|${exceptionsOnly}`);
+    setPage(1); // a filter set from outside starts again on page 1
+  }
   const pageSize = 10;
   const q = useEmployeeDays(employeeId, {
     start,
@@ -50,11 +65,20 @@ export function AttendanceHistoryTable({ employeeId, start, end, onSelectDay, ac
     status: status || undefined,
     exceptions_only: exceptionsOnly || undefined,
   });
+  const filtered = status || exceptionsOnly;
   return (
-    <Card>
+    <Card id={id} className={clsx("scroll-mt-24", className)}>
       <CardHeader
         title="Attendance history"
-        subtitle={formatDate(start) + " – " + formatDate(end)}
+        subtitle={<>
+          {formatDate(start) + " – " + formatDate(end)}
+          {filtered && q.data && <> · showing {q.data.total} {status ? STATUS_LABEL[status].toLowerCase() : ""} day{q.data.total === 1 ? "" : "s"}{exceptionsOnly ? " with exceptions" : ""}</>}
+          {filtered && (
+            <button type="button" className="ml-2 font-medium text-brand-text hover:underline" onClick={() => onFilter ? onFilter({ status: "", exceptions: false }) : (setOwnStatus(""), setOwnExceptions(false))}>
+              Clear filter
+            </button>
+          )}
+        </>}
         actions={
           <>
             <label className="sr-only" htmlFor="hist-status">

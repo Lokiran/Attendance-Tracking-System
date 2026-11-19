@@ -277,7 +277,7 @@ def to_xlsx(r: Report) -> bytes:
     header(ws, row, ["Measure", "Value", "Note"])
     figures = [
         ("Office (WFO) days", r.office_days, f"of {r.required_days} required · {r.target_note}"),
-        ("Attendance rate", _pct(s.attendance_percentage), f"{s.present_expected_days} of {s.expected_days} scheduled days in the office"),
+        ("Attendance rate", _pct(s.attendance_percentage), f"{s.present_days} of {s.counted_days} working days in the office"),
         ("Average office hours", _hm(s.average_net_minutes), f"on {s.hours_days} day(s) with recorded hours" if s.hours_days else "not in the timesheets for this period"),
         ("Required hours", _hm(s.required_minutes), f"{s.expected_days} scheduled day(s)"),
         ("Absent days", s.absent_days, ""), ("Work from home days", s.wfh_days, ""), ("Leave days", s.leave_days, ""),
@@ -452,7 +452,7 @@ def to_pdf(r: Report) -> bytes:
 
     tiles = Table([[
         tile("Office (WFO) days", f"{r.office_days} of {r.required_days}", r.target_note, band_hex),
-        tile("Attendance rate", _pct(s.attendance_percentage), f"{s.present_expected_days} of {s.expected_days} scheduled days"),
+        tile("Attendance rate", _pct(s.attendance_percentage), f"{s.present_days} of {s.counted_days} working days"),
         tile("Average office hours", _hm(s.average_net_minutes) if s.hours_days else "Not recorded",
              f"on {s.hours_days} day(s) with hours" if s.hours_days else "not in the timesheets"),
         tile("Absent days", str(s.absent_days), f"WFH {s.wfh_days} · Leave {s.leave_days}"),

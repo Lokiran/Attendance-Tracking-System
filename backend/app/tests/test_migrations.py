@@ -24,7 +24,7 @@ def empty_schema():
     reset_schema(engine)
 
 
-HEAD = "0005"
+HEAD = "0006"
 
 
 def test_upgrade_downgrade_reupgrade(empty_schema):
@@ -53,7 +53,8 @@ def test_migrated_schema_matches_models(empty_schema):
         ctx = MigrationContext.configure(conn, opts={"compare_type": True})
         diffs = compare_metadata(ctx, Base.metadata)
     # Expression indexes (lower(name), COALESCE(...)) cannot be compared reliably by reflection.
-    expression_indexes = {"uq_departments_name_lower", "uq_holidays_date_department"}
+    expression_indexes = {"uq_departments_name_lower", "uq_holidays_date_department", "uq_office_sites_name_lower",
+                          "uq_office_sites_code_lower", "ix_devices_hostname_lower"}
     relevant = [d for d in diffs if not (isinstance(d, tuple) and d[0] in ("add_index", "remove_index")
                                          and d[1].name in expression_indexes)]
     assert relevant == [], relevant
@@ -399,3 +400,25 @@ def test_0005_backfills_periods_of_committed_timesheets(empty_schema):
     assert "period_start" not in {c["name"] for c in inspect(engine).get_columns("attendance_uploads")}
     assert len(_rows("attendance_uploads")) == 3  # uploads kept
     upgrade("0005")
+
+
+# --------------------------------------------------------------------------- 0006 (office sites, devices)
+
+def test_0006_moves_wifi_mac_addresses_into_the_device_register(empty_schema):
+    upgrade("0001")
+    _seed_0001_rows()
+    upgrade("0005")
+    _exec("UPDATE users SET wifi_identity = 'aa:bb:cc:dd:ee:01' WHERE id = 1")
+    _exec("INSERT INTO users (id, employee_code, full_name, email, password_hash, role, is_active, attendance_tracked, "
+          "date_joined, created_at, updated_at) VALUES (2, 'E2', 'Radius User', 'r@test.example', 'x', 'EMPLOYEE', "
+          "true, true, '2025-01-01', '2026-01-01 00:00:00', '2026-01-01 00:00:00')")
+    _exec("UPDATE users SET wifi_identity = 'corp\jdoe' WHERE id = 2")  # an 802.1X username, not a MAC
+    upgrade("0006")
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT mac_address, user_id, source, serial_number FROM devices")).all()
+    assert [tuple(r) for r in rows] == [("aa:bb:cc:dd:ee:01", 1, "LEGACY", None)]
+    downgrade("0005")
+    assert "devices" not in inspect(engine).get_table_names()
+    assert "site_id" not in {c["name"] for c in inspect(engine).get_columns("wifi_events")}
+    upgrade("0006")

@@ -31,6 +31,7 @@ class PeriodStats(BaseModel):
     variance_minutes: int           # net_minutes - hours_required_minutes
     average_net_minutes: int | None
     attendance_percentage: float | None
+    counted_days: int = 0           # the rate's days: expected days + office days on holidays / off days
 
 
 class BandCount(BaseModel):

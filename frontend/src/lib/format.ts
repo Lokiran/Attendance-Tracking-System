@@ -26,6 +26,38 @@ export function formatTime(iso: string | null | undefined): string {
   return fmt({ hour: "2-digit", minute: "2-digit", hour12: true }).format(new Date(iso));
 }
 
+/** Minutes since midnight in the office timezone ("2026-09-02T04:07:00Z" -> 577 for 09:37 IST). */
+export function minutesOfDay(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const parts = fmt({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
+  const m = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
+  return (h % 24) * 60 + m;
+}
+
+/** A clock time from minutes since midnight or "HH:MM[:SS]": 577 -> "09:37 am". */
+export function clockTime(v: number | string | null | undefined): string {
+  if (v === null || v === undefined || v === "") return "—";
+  const total = typeof v === "number" ? v : Number(v.slice(0, 2)) * 60 + Number(v.slice(3, 5));
+  const h = Math.floor(total / 60) % 24;
+  const m = Math.round(total % 60);
+  return `${String(h % 12 || 12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
+}
+
+/** A duration that reads naturally: 35 -> "35m", 73 -> "1h 13m". */
+export function duration(min: number): string {
+  const abs = Math.abs(Math.round(min));
+  return abs >= 60 ? formatMinutes(abs) : `${abs}m`;
+}
+
+/** Signed difference in words: 14 -> "14m later", -46 -> "46m earlier" (with custom words). */
+export function signedMinutes(diff: number, later = "later", earlier = "earlier"): string {
+  if (Math.abs(diff) < 1) return "on time";
+  const abs = Math.abs(Math.round(diff));
+  const text = abs >= 60 ? formatMinutes(abs) : `${abs}m`;
+  return `${text} ${diff > 0 ? later : earlier}`;
+}
+
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   return fmt({ day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }).format(

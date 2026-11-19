@@ -7,16 +7,18 @@ Priorities: **P0** = before anyone uses it for real · **P1** = before a pilot t
 **P2** = before company-wide rollout · **P3** = after launch.
 Status: `[x]` done · `[ ]` open · `[~]` blocked (reason given). Each item has a "done when" test.
 
-## Where we are (2026-11-05)
+## Where we are (2026-11-16)
 
 | Area | State |
 |---|---|
-| Features | Employee / manager / admin dashboards, check-in/out, corrections, reports, audit — working |
-| Backend tests | 161 passed on SQLite; **26 PostgreSQL-only tests never run** |
-| Frontend tests | 21 passed (one test file); type-check and build clean |
-| Database | Verified on SQLite only; PostgreSQL install blocked on this laptop (download 403, no admin) |
-| Delivery | Not a git repository; no CI; no Dockerfile; no staging environment |
-| Auto attendance | Phase 1 (foundation: schema, settings, Entra sign-in) done; Phases 2–5 open (see `TODO.md`); off by default |
+| Features | Timesheet imports (Excel / CSV / PDF), employee / manager / admin dashboards, WFO tracking, PDF / Excel / CSV exports, audit — working. Check-in/out, corrections and leave requests were removed on 2026-11-10 |
+| Data | Real June–September 2026 timesheets loaded in the local SQLite database |
+| Backend tests | 278 on SQLite; **296 on PostgreSQL, none skipped** |
+| Frontend tests | 44 passed; type-check and build clean |
+| Database | PostgreSQL 17.12 installed locally (port 5433): `ats_db` migrated to 0006 with the real data copied from SQLite; all 296 backend tests pass on PostgreSQL (2026-11-17) |
+| Delivery | Git + GitHub with CI (GitHub Actions); no Dockerfile; no staging environment |
+| Org data | Manager hierarchy, departments, holidays and real emails not loaded yet |
+| Auto attendance | Phase 1 (foundation: schema, settings, Entra sign-in) done; Phases 2–5 open (see [automatic-attendance.md](automatic-attendance.md)); off by default |
 
 ---
 
