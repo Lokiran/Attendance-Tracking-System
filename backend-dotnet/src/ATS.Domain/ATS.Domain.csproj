@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Entities, enums and the pure rule engines. No framework or EF references. -->
+  <PropertyGroup>
+    <RootNamespace>Ats.Domain</RootNamespace>
+  </PropertyGroup>
+</Project>

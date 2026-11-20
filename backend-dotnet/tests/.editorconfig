@@ -1,0 +1,8 @@
+# Test code only: readable test names use underscores, test doubles keep instance members.
+[*.cs]
+dotnet_diagnostic.CA1707.severity = none   # Remove underscores from member names
+dotnet_diagnostic.CA1822.severity = none   # Mark members as static
+dotnet_diagnostic.CA2007.severity = none   # ConfigureAwait (xUnit has no synchronization-context concerns)
+dotnet_diagnostic.CA1515.severity = none   # Make public types internal (xUnit discovers public classes)
+dotnet_diagnostic.CA1861.severity = none   # Constant arrays as arguments in test data
+dotnet_diagnostic.CA2000.severity = none   # Dispose objects (HttpRequestMessage / content owned by the test)

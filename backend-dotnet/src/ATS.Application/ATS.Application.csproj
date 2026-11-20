@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Services, DTOs, validators, settings and the Python-compatibility helpers. -->
+  <PropertyGroup>
+    <RootNamespace>Ats.Application</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Shared framework (DI, logging, options abstractions); not a NuGet package. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ATS.Domain\ATS.Domain.csproj" />
+  </ItemGroup>
+</Project>

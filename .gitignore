@@ -31,3 +31,11 @@ Thumbs.db
 
 # Logs
 *.log
+
+# .NET backend (backend-dotnet/)
+backend-dotnet/**/bin/
+backend-dotnet/**/obj/
+backend-dotnet/**/TestResults/
+backend-dotnet/data/
+*.user
+.vs/
