@@ -10,4 +10,12 @@
   <ItemGroup>
     <ProjectReference Include="..\ATS.Domain\ATS.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Services query through IAtsDb (DbSet / LINQ); the provider and DbContext live in Infrastructure. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="FluentValidation" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ATS.Tests" />
+  </ItemGroup>
 </Project>

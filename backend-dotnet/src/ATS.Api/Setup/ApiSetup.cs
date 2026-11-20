@@ -1,4 +1,5 @@
 using System.Reflection;
+using Ats.Api.Auth;
 using Ats.Api.Middleware;
 using Ats.Application.Configuration;
 using Ats.Application.Json;
@@ -20,10 +21,11 @@ internal static class ApiSetup
 
     public static IServiceCollection AddAtsApi(this IServiceCollection services)
     {
-        services.AddControllers()
+        services.AddControllers(o => o.Filters.Add<ValidationFilter>())
             .AddJsonOptions(o => AtsJson.Configure(o.JsonSerializerOptions))
             .ConfigureApiBehaviorOptions(o => o.InvalidModelStateResponseFactory = ValidationErrors.Respond);
         services.ConfigureHttpJsonOptions(o => AtsJson.Configure(o.SerializerOptions));
+        services.AddSessionAuth();
 
         // CORS as configured in Python: credentials, the four write methods plus GET, the CSRF / request-id headers.
         services.AddCors();
@@ -65,6 +67,7 @@ internal static class ApiSetup
     {
         app.UseMiddleware<RequestContextMiddleware>();
         app.UseSerilogRequestLogging();
+        app.UseRouting();
         app.UseCors();
         app.UseMiddleware<ErrorHandlingMiddleware>();
         app.UseStatusCodePages(async context =>
@@ -90,6 +93,8 @@ internal static class ApiSetup
         });
         app.MapGet("/api/redoc", () => Results.Content(RedocPage, "text/html; charset=utf-8")).ExcludeFromDescription();
 
+        // Inside the error middleware: a refused session / CSRF / role is raised and rendered as the envelope.
+        app.UseAuthorization();
         app.MapControllers();
         return app;
     }

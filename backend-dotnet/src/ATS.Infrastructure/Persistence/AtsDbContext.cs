@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Ats.Application.Common;
+using Ats.Application.Data;
 using Ats.Domain;
 using Ats.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,7 @@ namespace Ats.Infrastructure.Persistence;
 /// columns, the SQLAlchemy naming convention for keys and indexes, enums as their stored strings, JSON columns,
 /// and on SQLite the same text formats for timestamps. The provider (PostgreSQL or SQLite) comes from the options.
 /// </summary>
-public class AtsDbContext : DbContext
+public class AtsDbContext : DbContext, IAtsDb
 {
     private readonly IClock _clock;
 

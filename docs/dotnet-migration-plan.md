@@ -397,6 +397,20 @@ CPython's algorithm (correctly rounded through the shortest repr) and `PyMath.Ro
 * **Verified:** new databases created by `migrate` match the Alembic catalog exactly (PostgreSQL: 445 entries,
   SQLite: 55). `ats_db` and the dev SQLite file match too, and every row of both loads through the EF model.
 
+### 6.2 As built (phase 3: authentication)
+
+* **Mechanism:** a custom `AuthenticationHandler` (scheme `ats-session`) authenticates only on `[Authorize]`
+  endpoints, because there is no default scheme. Public endpoints never read the session or check CSRF, as in Python.
+  Failures are raised as the Python errors (401 codes, 403 `csrf_failed` / `forbidden`) and rendered by the error
+  middleware.
+* **Verified across backends:** Python and .NET running on one database with the same `SECRET_KEY`:
+  * a session cookie from either backend works on the other, and a logout on one is honoured by the other;
+  * `/api/auth/me`, `/api/auth/providers`, the 401 body and a 422 body are identical;
+  * argon2 hashes verify in both directions, with no rehash.
+* **Validation messages:** request validation uses FluentValidation with Pydantic's wording ("Field required",
+  "String should have at least 1 character", email-validator's reasons). Validators are registered by a small
+  reflection helper rather than the FluentValidation.DependencyInjectionExtensions package.
+
 ---
 
 ## 7. Business logic inventory (port line by line)

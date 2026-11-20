@@ -5,40 +5,20 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Ats.Application.Python;
+using Ats.Domain;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Ats.Infrastructure.Persistence;
 
-/// <summary>An enum's stored string values, from <see cref="JsonStringEnumMemberNameAttribute"/> on each member.</summary>
+/// <summary>EF converters between an enum and its stored text (see <see cref="EnumText"/>).</summary>
 public static class EnumStrings
 {
-    public static IReadOnlyCollection<string> All<TEnum>()
-        where TEnum : struct, Enum => Cache<TEnum>.ToText.Values;
-
     public static string Text<TEnum>(TEnum value)
-        where TEnum : struct, Enum => Cache<TEnum>.ToText[value];
-
-    public static TEnum Parse<TEnum>(string text)
-        where TEnum : struct, Enum =>
-        Cache<TEnum>.FromText.TryGetValue(text, out var v)
-            ? v
-            : throw new InvalidOperationException($"Unknown {typeof(TEnum).Name} value '{text}'");
+        where TEnum : struct, Enum => EnumText.Of(value);
 
     public static ValueConverter<TEnum, string> Converter<TEnum>()
-        where TEnum : struct, Enum => new(v => Text(v), s => Parse<TEnum>(s));
-
-    private static class Cache<TEnum>
-        where TEnum : struct, Enum
-    {
-        public static readonly Dictionary<TEnum, string> ToText = Enum.GetValues<TEnum>().ToDictionary(
-            v => v,
-            v => typeof(TEnum).GetField(v.ToString())!.GetCustomAttribute<JsonStringEnumMemberNameAttribute>()?.Name
-                 ?? throw new InvalidOperationException($"{typeof(TEnum).Name}.{v} has no stored name"));
-
-        public static readonly Dictionary<string, TEnum> FromText =
-            ToText.ToDictionary(kv => kv.Value, kv => kv.Key, StringComparer.Ordinal);
-    }
+        where TEnum : struct, Enum => new(v => EnumText.Of(v), s => EnumText.Parse<TEnum>(s));
 }
 
 /// <summary>Column formats that match what SQLAlchemy writes, so both backends can share one database.</summary>

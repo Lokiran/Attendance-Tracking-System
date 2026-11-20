@@ -3,8 +3,9 @@
 ASP.NET Core port of the FastAPI backend in `../backend`. The React frontend works unchanged; only its proxy target
 moves from port 8000 to 8001 at cutover. Plan, decisions and progress: [`../docs/dotnet-migration-plan.md`](../docs/dotnet-migration-plan.md).
 
-> **Status: phase 2 of 9** (scaffold, configuration, logging, OpenAPI, health, request pipeline; domain model, EF Core
-> mapping and migrations matching the Alembic schema). The Python backend remains the working backend until cutover.
+> **Status: phase 3 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
+> mapping and migrations matching the Alembic schema; sign-in, sessions and role / reporting-line authorisation
+> (`/api/auth/*`). The Python backend remains the working backend until cutover.
 
 ## Requirements
 
@@ -72,6 +73,24 @@ dotnet run --project src\ATS.Api -- schema-catalog out.json  # write the schema 
 * **Python-written fixture:** `tests/ATS.Tests/Fixtures/python-0006.sqlite3` holds fictional rows written by the Python
   models, so the tests prove .NET reads Python's storage formats. Rebuild it with
   `backend\.venv\Scripts\python.exe backend-dotnet\tools\make_python_fixture.py`.
+
+## Sign-in
+
+Exactly the Python mechanism, so the frontend needs no change and both backends accept the same sessions when they
+share a database and `SECRET_KEY`:
+
+* **Session cookie:** `ats_session` is an HttpOnly cookie; the database stores only its HMAC-SHA256 (keyed with
+  `SECRET_KEY`). `ats_csrf` is readable by the SPA, which echoes it in `X-CSRF-Token` on every POST, PUT, PATCH and
+  DELETE (double submit).
+* **Expiry and throttling:** idle and absolute expiry follow `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS`, and
+  failed logins are throttled per email and per IP (`LOGIN_*`).
+* **Passwords:** Argon2id, compatible with argon2-cffi. Existing hashes verify unchanged, and hashes written here
+  verify in Python.
+* **Microsoft Entra ID:** authorization code with PKCE (`ENTRA_*`). The dev login (`DEV_LOGIN_ENABLED`) is refused in
+  production.
+* **Authorisation:** endpoints use `[Authorize(Policy = SessionAuth.User | ManagerOrAdmin | Admin)]`. The order of
+  checks is Python's: session (401), CSRF (403 `csrf_failed`), then role (403 `forbidden`). `ScopeService` holds the
+  reporting-line rules: a manager sees their whole subtree.
 
 ## Build and test
 

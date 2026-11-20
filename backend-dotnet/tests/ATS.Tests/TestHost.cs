@@ -1,7 +1,9 @@
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Ats.Tests;
 
@@ -42,9 +44,11 @@ internal static class TestEnvironment
 public sealed class ApiFactory : WebApplicationFactory<Program>
 {
     private readonly Dictionary<string, string?> _settings;
+    private readonly Action<IServiceCollection>? _services;
 
-    public ApiFactory(IDictionary<string, string?>? overrides = null)
+    public ApiFactory(IDictionary<string, string?>? overrides = null, Action<IServiceCollection>? services = null)
     {
+        _services = services;
         _settings = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
             ["APP_ENV"] = "test",
@@ -63,5 +67,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(_settings));
+        if (_services is not null)
+        {
+            builder.ConfigureTestServices(_services);
+        }
     }
 }
