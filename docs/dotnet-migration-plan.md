@@ -382,6 +382,21 @@ CPython's algorithm (correctly rounded through the shortest repr) and `PyMath.Ro
    SQLite value converters will write SQLAlchemy's exact format, so text comparisons in SQL keep ordering correctly and
    both backends can share a SQLite file.
 
+### 6.1 As built (phase 2)
+
+* **PostgreSQL DDL:** the baseline SQL is `pg_dump --schema-only` of a new Alembic database, except for 19 CHECK
+  constraints. pg_dump prints enum CHECKs as `= ANY ((ARRAY[...])::text[])`, which PostgreSQL stores as a different
+  expression when re-run. So they are written as SQLAlchemy emitted them (`col IN (...)`, `... BETWEEN 1 AND 60`), and
+  the stored definitions are then identical.
+* **Long constraint names:** two foreign-key names exceed 63 characters. On PostgreSQL SQLAlchemy shortened them
+  (`…_attendanc_e605`, `…_attendan_ca71`); on SQLite they are full length. The model uses each provider's name.
+* **SQLite comparison:** Alembic's batch mode rebuilt some tables with the table constraints in reflection order,
+  which differs between databases. The catalog sorts table-level constraints; column order still counts.
+* **EF bookkeeping:** EF's `__EFMigrationsHistory` and `__EFMigrationsLock` tables are excluded from schema
+  comparisons. EF's foreign-key index convention is off, since Alembic only created declared indexes.
+* **Verified:** new databases created by `migrate` match the Alembic catalog exactly (PostgreSQL: 445 entries,
+  SQLite: 55). `ats_db` and the dev SQLite file match too, and every row of both loads through the EF model.
+
 ---
 
 ## 7. Business logic inventory (port line by line)
@@ -675,6 +690,7 @@ production where Python refuses.
 | P8 | Sorting and lower-casing use Python semantics: `str.lower()` (full Unicode) and code-point ordering. .NET must use `ToLowerInvariant()` and `StringComparer.Ordinal`, **not** culture comparison. `List.Sort` is unstable, so use LINQ `OrderBy` (stable). | `dashboard.SORT_KEYS`, org grouping, conflict and error sorts |
 | P9 | Month and week labels use `strftime("%b")`, which depends on the locale (English on every current host). .NET must use `CultureInfo.InvariantCulture`. | labels in trends, WFO weeks and month rows |
 | P10 | The `employee_trends` response always has `headcount: 1`. | `routes/attendance.py` |
+| P11 | Storage only: SQLAlchemy writes a `None` it was given in a JSON column as the JSON text `'null'` (the audit log's before/after values), but a column never given as SQL NULL. .NET reads both as null and writes SQL NULL (EF's null-converting converters are an internal API). Both backends read either form as null, so the API output is identical. | `services/audit.py`, `persistence/ValueConversions.cs` |
 
 ---
 

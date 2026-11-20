@@ -13,5 +13,20 @@
   <ItemGroup>
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Exact Alembic (head 0006) DDL used by the baseline migrations, and the expected schema catalogs. -->
+    <EmbeddedResource Include="Persistence\Migrations\**\*.sql" />
+    <EmbeddedResource Include="Persistence\Schema\*.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ATS.Tests" />
   </ItemGroup>
 </Project>

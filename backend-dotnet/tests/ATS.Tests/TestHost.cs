@@ -21,11 +21,19 @@ internal static class TestEnvironment
         Environment.SetEnvironmentVariable("ATS_ENV_FILE", empty);
     }
 
-    /// <summary>A new, empty SQLite file (the app never creates one itself).</summary>
+    private static readonly Lazy<string> Template = new(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ats-template-{Guid.NewGuid():N}.sqlite3");
+        var target = Ats.Infrastructure.Database.DatabaseTarget.Parse("sqlite:///" + path.Replace('\\', '/'), Path.GetTempPath());
+        var code = new Ats.Infrastructure.Persistence.DatabaseCommands(target, TextWriter.Null).MigrateAsync().GetAwaiter().GetResult();
+        return code == 0 ? path : throw new InvalidOperationException("Could not create the template database");
+    });
+
+    /// <summary>A new SQLite database with the application schema (a copy of one migrated template).</summary>
     public static string NewSqliteFile()
     {
         var path = Path.Combine(Path.GetTempPath(), $"ats-test-{Guid.NewGuid():N}.sqlite3");
-        File.WriteAllBytes(path, []);
+        File.Copy(Template.Value, path);
         return path;
     }
 }

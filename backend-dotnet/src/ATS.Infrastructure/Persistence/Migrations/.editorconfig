@@ -1,0 +1,3 @@
+# EF Core migrations and model snapshots are generated code.
+[*.cs]
+generated_code = true

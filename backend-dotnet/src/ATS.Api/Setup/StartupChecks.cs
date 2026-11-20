@@ -11,6 +11,13 @@ internal static partial class StartupChecks
     /// </summary>
     public static void Run(WebApplication app)
     {
+        var (settings, target) = LogConfiguration(app);
+        DatabaseStartup.EnsureReady(target, settings);
+    }
+
+    /// <summary>Builds and validates the settings, parses the database URL and logs where the data is.</summary>
+    public static (AtsSettings Settings, DatabaseTarget Target) LogConfiguration(WebApplication app)
+    {
         var settings = app.Services.GetRequiredService<AtsSettings>();
         var target = app.Services.GetRequiredService<DatabaseTarget>();
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ats");
@@ -20,7 +27,7 @@ internal static partial class StartupChecks
         }
 
         LogDatabase(logger, target.Description, settings.EnvFile ?? "none");
-        DatabaseStartup.EnsureReady(target, settings);
+        return (settings, target);
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{Warning}")]

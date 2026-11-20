@@ -3,6 +3,7 @@ using Ats.Application.Common;
 using Ats.Application.Configuration;
 using Ats.Infrastructure;
 using Ats.Infrastructure.Database;
+using Ats.Infrastructure.Persistence;
 
 // Office Attendance Tracker API (ASP.NET Core port of backend/, see docs/dotnet-migration-plan.md).
 try
@@ -15,6 +16,14 @@ try
     builder.Services.AddAtsApi();
 
     var app = builder.Build();
+    if (args.Length > 0 && DatabaseCommands.Names.Contains(args[0]))
+    {
+        // Database maintenance: migrate | ef-baseline | schema-check | schema-catalog [file]. No web server.
+        StartupChecks.LogConfiguration(app);
+        var commands = new DatabaseCommands(app.Services.GetRequiredService<DatabaseTarget>(), Console.Out);
+        return await commands.RunAsync(args[0], args.Skip(1).ToList()).ConfigureAwait(false);
+    }
+
     StartupChecks.Run(app);
     app.UseAtsPipeline();
     await app.RunAsync().ConfigureAwait(false);

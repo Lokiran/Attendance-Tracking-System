@@ -37,5 +37,7 @@ backend-dotnet/**/bin/
 backend-dotnet/**/obj/
 backend-dotnet/**/TestResults/
 backend-dotnet/data/
+# Synthetic test fixture written by backend-dotnet/tools/make_python_fixture.py (fictional data only)
+!backend-dotnet/tests/ATS.Tests/Fixtures/python-0006.sqlite3
 *.user
 .vs/

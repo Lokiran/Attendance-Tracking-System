@@ -3,8 +3,8 @@
 ASP.NET Core port of the FastAPI backend in `../backend`. The React frontend works unchanged; only its proxy target
 moves from port 8000 to 8001 at cutover. Plan, decisions and progress: [`../docs/dotnet-migration-plan.md`](../docs/dotnet-migration-plan.md).
 
-> **Status: phase 1 of 9** (scaffold, configuration, logging, OpenAPI, health, request pipeline). The Python backend
-> remains the working backend until cutover is approved.
+> **Status: phase 2 of 9** (scaffold, configuration, logging, OpenAPI, health, request pipeline; domain model, EF Core
+> mapping and migrations matching the Alembic schema). The Python backend remains the working backend until cutover.
 
 ## Requirements
 
@@ -46,6 +46,33 @@ dotnet run --project src\ATS.Api            # http://127.0.0.1:8001
 * Health: `GET http://127.0.0.1:8001/api/health`, `GET http://127.0.0.1:8001/api/health/db`
 * API docs: `http://127.0.0.1:8001/api/docs` (Swagger UI), `/api/redoc`, `/api/openapi.json`
 
+## Database
+
+The schema is the Python backend's, at Alembic head **0006**. EF Core migrations replace Alembic: the baseline
+migration runs Alembic's exact DDL (`src/ATS.Infrastructure/Persistence/Migrations/*/Baseline.*.sql`), so a database
+created by .NET is identical to one created by `alembic upgrade head`. That includes `alembic_version` = `0006`, so the
+Python backend also accepts it until cutover. The API never creates or migrates a database on its own; use the commands:
+
+```powershell
+cd backend-dotnet
+dotnet run --project src\ATS.Api -- schema-check          # compare with Alembic head 0006 (read-only)
+dotnet run --project src\ATS.Api -- migrate               # new, empty database only
+dotnet run --project src\ATS.Api -- ef-baseline           # adopt an existing Alembic database (see below)
+dotnet run --project src\ATS.Api -- schema-catalog out.json  # write the schema catalog (read-only)
+```
+
+* **`migrate`** creates the schema in an empty database (a SQLite file is created if missing). It refuses a database
+  that Alembic created, or any non-empty database without EF history.
+* **`ef-baseline`** adopts an existing Python database. It changes **nothing** unless `alembic_version` is `0006` and
+  the schema matches the expected catalog exactly. Then it only adds EF's `__EFMigrationsHistory` table and records
+  the baseline; `alembic_version` and all data stay. Take a backup first (`pg_dump`). Running it again is harmless.
+* **Expected schema:** `Persistence/Schema/expected-*.json` was read from new databases built by
+  `alembic upgrade head`. Regenerate it only from such a database:
+  `$env:ATS_CATALOG_SOURCE="alembic upgrade head (0006) on a new PostgreSQL database"; dotnet run --project src\ATS.Api -- schema-catalog <absolute path>`.
+* **Python-written fixture:** `tests/ATS.Tests/Fixtures/python-0006.sqlite3` holds fictional rows written by the Python
+  models, so the tests prove .NET reads Python's storage formats. Rebuild it with
+  `backend\.venv\Scripts\python.exe backend-dotnet\tools\make_python_fixture.py`.
+
 ## Build and test
 
 ```powershell
@@ -55,4 +82,8 @@ dotnet test ATS.sln
 ```
 
 The tests never read a developer env file (`ATS_ENV_FILE` points at an empty file during the run) and use
-temporary SQLite files.
+temporary SQLite files. Optional:
+
+* `ATS_TEST_POSTGRES_URL`: a disposable PostgreSQL database whose name contains `test`. **Every table in it is
+  dropped.** It enables the PostgreSQL tests (`ATS_REQUIRE_POSTGRES=1` makes them fail instead of skip, for CI).
+* `ATS_TEST_READONLY_DB_URL`: an existing database to read completely through the EF model. Nothing is written.
