@@ -131,3 +131,15 @@ def test_borderless_pdf_with_glued_header_and_ids_is_split():
     assert t.rows[1] == ["10001", "Rahul Reddy", "10/1/2026", "09:40", "17:39", "7:59"]
     assert t.rows[2] == ["20002-Ext", "Sneha Rao", "10/2/2026", "10:05", "12:15", "2:10"]
     assert t.rows[3][:3] == ["Guest 01", "Guest 01", "10/2/2026"]  # already separate: unchanged
+
+
+def test_serial_number_label_glued_to_the_id_label_is_split():
+    """"Sr No.Code": the serial-number header runs into the ID header; the ID column must still be found
+    (otherwise the name column is taken as the employee reference)."""
+    y = 540.0
+    page = [(53, y, "Sr No.Code"), (150, y, "Employee"), (315, y, "Date"), (374, y, "Time InTime OutTotal Hrs"),
+            (65, y - 15, "1"), (102, y - 15, "16942"), (165, y - 15, "Rahul Reddy"), (316, y - 15, "05/10/2026"),
+            (380, y - 15, "11:22"), (424, y - 15, "16:26"), (464, y - 15, "05:04:00")]
+    t = read_workbook("October 2026.pdf", make_pdf([page]))
+    assert t.rows[0][-6:] == ["Code", "Employee", "Date", "Time In", "Time Out", "Total Hrs"]
+    assert t.rows[1][-6:] == ["16942", "Rahul Reddy", "05/10/2026", "11:22", "16:26", "05:04:00"]

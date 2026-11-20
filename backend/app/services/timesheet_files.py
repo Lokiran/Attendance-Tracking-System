@@ -218,13 +218,21 @@ def _unglue_date(cells: list, date_at: int | None) -> None:
 _GLUED_LABELS = re.compile(r"(?<=[a-z0-9.)])(?=[A-Z])")
 
 
+# A serial-number column ("Sr No.", "S.No", "Sl. No", "#") is not read, but its label can run into the next one
+# ("Sr No.Code"), which must still be split so the ID column is found.
+_SERIAL_LABEL = re.compile(r"^(?:s(?:r|l)?\.?\s*no\.?|serial(?:\s*no\.?)?|#|no\.?)$", re.IGNORECASE)
+
+
 def _split_header_words(row: list[_Word], mapping) -> list[_Word]:
-    """Split a header word that is several column labels run together, when every piece is a known column.
-    Each piece gets a share of the word's width in proportion to its length."""
+    """Split a header word that is several column labels run together, when every piece is a known column (or a
+    serial-number label, with at least one known column). Each piece gets a share of the word's width in
+    proportion to its length."""
     out: list[_Word] = []
     for w in row:
         pieces = [p.strip() for p in _GLUED_LABELS.split(w.text) if p.strip()]
-        if mapping.column(w.text) or len(pieces) < 2 or not all(mapping.column(p) for p in pieces):
+        known = [bool(mapping.column(p)) for p in pieces]
+        if mapping.column(w.text) or len(pieces) < 2 or not any(known) \
+                or not all(k or _SERIAL_LABEL.match(p) for k, p in zip(known, pieces)):
             out.append(w)
             continue
         total, at = sum(len(p) for p in pieces), w.x0

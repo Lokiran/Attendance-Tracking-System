@@ -400,6 +400,20 @@ def test_a_shared_name_is_not_guessed(client, staff, factory, db):
     assert s["matched_by_name"] == [] and [u["employee_ref"] for u in s["unknown_employees"]] == ["Intern-9"]
 
 
+def test_a_name_in_the_id_column_is_linked_to_that_person_not_added(client, staff, db):
+    """No ID column found, so the Employee (name) column is the reference: link by the unique name rather than
+    offer to add a second person whose ID is their name."""
+    h = login(client, staff.admin)
+    r = upload(client, h, "a.csv", b"Employee,Date,Time In,Time Out\nPerson EMP002,05/10/2026,09:30,17:30\n")
+    s = r.json()["summary"]
+    assert s["unknown_employees"] == [] and r.json()["error_count"] == 0
+    assert s["matched_by_name"][0]["app_code"] == "EMP002"
+    client.post(f"{URL}/{r.json()['id']}/commit", headers=h, json={})
+    row = db.scalar(select(AttendanceDaily).where(AttendanceDaily.work_date == date(2026, 10, 5)))
+    assert row.employee_id == staff.people["EMP002"].id and row.upload_minutes == 480
+    assert db.scalar(select(func.count()).select_from(User)) == 2 + len(CODES)
+
+
 def test_an_earlier_month_moves_a_guessed_joining_date_back(client, staff, db):
     h = login(client, staff.admin)
     oct_ = upload(client, h, "oct.csv", b"Emp Code,Emp Name,Date\nT-1,New Person,05/10/2026\n").json()

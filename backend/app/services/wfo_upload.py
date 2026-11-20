@@ -279,10 +279,13 @@ def parse_rows(db: Session, table: list[list], today: date, presence_mode: WorkM
             if not ref:
                 raise ValueError("employee is empty")
             known = by_ref.get(ref)
-            if known is None and p.employee_name:
+            # Without a name column the "ID" may itself be a name (an ID column the reader could not find, so
+            # the Employee name column was taken): match it against names too rather than add a duplicate.
+            name_hint = p.employee_name or (ref_text if "name" not in columns else None)
+            if known is None and name_hint:
                 # The same person under another ID than last month ("Intern-7" in August, "E1234" in
                 # September): link the row when exactly one person has that name, and say so in the preview.
-                same = by_name.get(normalize(p.employee_name), [])
+                same = by_name.get(normalize(name_hint), [])
                 if len(same) == 1:
                     known = same[0]
                     hit = matched_by_name.setdefault(ref, {"employee_ref": p.employee_ref, "name": p.employee_name,
