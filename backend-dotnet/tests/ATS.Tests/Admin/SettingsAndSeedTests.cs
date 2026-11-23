@@ -139,20 +139,38 @@ public sealed partial class SettingsAndSeedTests : IDisposable
             db.Holidays.Count().Should().BeGreaterThanOrEqualTo(3);
             db.AttendancePolicies.Single().FullDayMinutes.Should().Be(480);
             db.AttendanceUploads.Count(u => u.Status == UploadStatus.Committed).Should().Be(4); // December to March (75 days back)
+            db.AttendanceUploads.ToList().Should().OnlyContain(u => u.Status == UploadStatus.Committed && u.ErrorCount == 0 && u.PeriodStart != null);
+            db.AttendanceDaily.Count().Should().BeGreaterThan(600);
+            db.AttendanceDaily.Select(d => d.UploadWorkMode).Distinct().ToList().Should().Contain(new WorkMode?[] { WorkMode.Office, WorkMode.Wfh, WorkMode.Leave });
             var rahul = db.Users.Single(u => u.EmployeeCode == "EMP001");
             rahul.WifiIdentity = "aa:bb:cc:dd:ee:ff";
             db.SaveChanges();
         }
 
+        int days;
+        using (var db = host.Db())
+            days = db.AttendanceDaily.Count();
         (await Run()).TimesheetsImported.Should().Be(0); // months already imported are skipped
         using (var db = host.Db())
         {
+            db.AttendanceDaily.Count().Should().Be(days);
+            db.Users.Count().Should().Be(15);
             db.Users.Single(u => u.EmployeeCode == "EMP001").WifiIdentity.Should().Be("aa:bb:cc:dd:ee:ff"); // never overwritten
             db.Users.Count(u => u.Role == Role.Employee).Should().Be(10);
         }
 
         env["SEED_DEMO_PASSWORD"] = "short";
         await FluentActions.Awaiting(Run).Should().ThrowAsync<Ats.Application.Common.ValidationFailedException>();
+    }
+
+    [Fact]
+    public async Task Seed_requires_passwords()
+    {
+        using var host = new AuthHost();
+        using var scope = host.Api.Services.CreateScope();
+        var env = new Dictionary<string, string?> { ["SEED_ADMIN_EMAIL"] = "admin@nexa.example", ["SEED_DEMO_PASSWORD"] = "DemoPassw0rd!" };
+        await FluentActions.Awaiting(() => scope.ServiceProvider.GetRequiredService<DemoSeed>().RunAsync(k => env.GetValueOrDefault(k)))
+            .Should().ThrowAsync<SeedException>().WithMessage("Set SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD and SEED_DEMO_PASSWORD*");
     }
 
     [GeneratedRegex("^02:a7:5e(:[0-9a-f]{2}){3}$")]

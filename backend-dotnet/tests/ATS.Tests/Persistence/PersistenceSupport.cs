@@ -55,7 +55,25 @@ internal static class Databases
     /// <summary>xUnit collection for every test that uses that one database, so they never run in parallel.</summary>
     public const string PostgresCollection = "postgres";
 
-    public static string? PostgresUrl => Environment.GetEnvironmentVariable("ATS_TEST_POSTGRES_URL");
+    public static string? PostgresUrl => Environment.GetEnvironmentVariable("ATS_TEST_POSTGRES_URL") is { Length: > 0 } url ? url : ContainerUrl.Value;
+
+    /// <summary>ATS_TEST_POSTGRES_CONTAINER=1: no URL needed, a PostgreSQL 16 container is started (Docker required).</summary>
+    public static bool ContainerRequested => Environment.GetEnvironmentVariable("ATS_TEST_POSTGRES_CONTAINER") == "1";
+
+    /// <summary>One throw-away container for the whole run, started on first use (Testcontainers removes it at exit).</summary>
+    private static readonly Lazy<string?> ContainerUrl = new(() =>
+    {
+        if (!ContainerRequested)
+        {
+            return null;
+        }
+
+        var container = new Testcontainers.PostgreSql.PostgreSqlBuilder("postgres:16").WithDatabase("ats_test").WithUsername("ats")
+            .WithPassword("container-only-password").Build();
+        container.StartAsync().GetAwaiter().GetResult();
+        var b = new NpgsqlConnectionStringBuilder(container.GetConnectionString());
+        return $"postgresql://{b.Username}:{Uri.EscapeDataString(b.Password ?? "")}@{b.Host}:{b.Port}/{b.Database}";
+    });
 
     public static async Task<DatabaseTarget> EmptyPostgresAsync()
     {
@@ -90,9 +108,11 @@ public sealed class PostgresFactAttribute : FactAttribute
 {
     public PostgresFactAttribute()
     {
-        if (Databases.PostgresUrl is null && Environment.GetEnvironmentVariable("ATS_REQUIRE_POSTGRES") != "1")
+        // Checked at discovery, so only the environment is read here; a requested container starts on first use.
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ATS_TEST_POSTGRES_URL")) && !Databases.ContainerRequested
+            && Environment.GetEnvironmentVariable("ATS_REQUIRE_POSTGRES") != "1")
         {
-            Skip = "Set ATS_TEST_POSTGRES_URL to a disposable PostgreSQL database to run this test";
+            Skip = "Set ATS_TEST_POSTGRES_URL to a disposable PostgreSQL database, or ATS_TEST_POSTGRES_CONTAINER=1 with Docker, to run this test";
         }
     }
 }

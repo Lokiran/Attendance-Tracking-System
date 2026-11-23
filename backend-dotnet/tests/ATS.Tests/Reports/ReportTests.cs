@@ -59,7 +59,7 @@ public sealed class ReportTests : IDisposable
 
     public void Dispose() => _host.Dispose();
 
-    private Org Org => _host.Org;
+    private Auth.Org Org => _host.Org;
 
     private Task<HttpResponseMessage> Get(string path) => _host.Client.GetAsync(new Uri(path, UriKind.Relative));
 

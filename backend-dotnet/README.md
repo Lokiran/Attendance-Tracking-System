@@ -3,12 +3,13 @@
 ASP.NET Core port of the FastAPI backend in `../backend`. The React frontend works unchanged; only its proxy target
 moves from port 8000 to 8001 at cutover. Plan, decisions and progress: [`../docs/dotnet-migration-plan.md`](../docs/dotnet-migration-plan.md).
 
-> **Status: phase 7 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
+> **Status: phase 8 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
 > mapping and migrations matching the Alembic schema; sign-in, sessions and role / reporting-line authorisation
 > (`/api/auth/*`); attendance, dashboard, team / organisation and WFO reads, holidays, departments and policy; timesheet
 > uploads (CSV, Excel, PDF), day overrides and the WFO policy; administration (users, departments, schedules,
 > holidays, policy, audit log), office sites and devices, automatic-attendance settings and the management commands;
-> CSV reports and the xlsx / PDF exports. The Python backend remains the working backend until cutover.
+> CSV reports and the xlsx / PDF exports; the pytest suite ported to xUnit and CI for Azure DevOps and GitHub. The Python
+> backend remains the working backend until cutover.
 
 ## Requirements
 
@@ -135,10 +136,12 @@ dotnet test ATS.sln
 ```
 
 The tests never read a developer env file (`ATS_ENV_FILE` points at an empty file during the run) and use
-temporary SQLite files. Optional:
+temporary SQLite files. [`tests/COVERAGE.md`](tests/COVERAGE.md) maps the Python tests to these. Optional:
 
 * `ATS_TEST_POSTGRES_URL`: a disposable PostgreSQL database whose name contains `test`. **Every table in it is
   dropped.** It enables the PostgreSQL tests (`ATS_REQUIRE_POSTGRES=1` makes them fail instead of skip, for CI).
+* `ATS_TEST_POSTGRES_CONTAINER=1`: without a URL, start a throwaway `postgres:16` container with Testcontainers for the
+  PostgreSQL tests (Docker must be running).
 * `ATS_TEST_READONLY_DB_URL`: an existing database to read completely through the EF model. Nothing is written.
 
 **Parity with the Python backend:** `tools/parity/compare.py` replays the read endpoints against both backends as an

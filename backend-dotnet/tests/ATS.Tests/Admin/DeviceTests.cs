@@ -19,7 +19,7 @@ public sealed class DeviceTests : IDisposable
 
     public void Dispose() => _host.Dispose();
 
-    private Org Org => _host.Org;
+    private Auth.Org Org => _host.Org;
 
     [Theory]
     [InlineData("AA-BB-CC-DD-EE-01", "aa:bb:cc:dd:ee:01")]

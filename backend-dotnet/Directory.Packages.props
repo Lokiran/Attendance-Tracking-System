@@ -41,5 +41,7 @@
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.15" />
     <!-- 7.x is Apache-2.0; 8.x is commercial (decision D5). -->
     <PackageVersion Include="FluentAssertions" Version="7.2.2" />
+    <!-- Approved (plan section 9): a throw-away PostgreSQL 16 in Docker for local runs (ATS_TEST_POSTGRES_CONTAINER=1). MIT. -->
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
   </ItemGroup>
 </Project>

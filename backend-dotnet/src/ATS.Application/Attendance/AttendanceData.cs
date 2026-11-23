@@ -236,22 +236,22 @@ public sealed class AttendanceData(IAtsDb db, IClock clock, AtsSettings settings
         return (schedules, holidays, policy);
     }
 
+    /// <summary>One aggregate query (count, last id, last commit time), as Python's <c>_coverage_fingerprint</c>.</summary>
     private async Task<string> CoverageFingerprintAsync(CancellationToken ct)
     {
-        var count = await Committed.CountAsync(ct).ConfigureAwait(false);
-        var maxId = await Committed.MaxAsync(u => (int?)u.Id, ct).ConfigureAwait(false);
-        var maxCommitted = await Committed.MaxAsync(u => u.CommittedAt, ct).ConfigureAwait(false);
-        return $"{count}|{maxId}|{maxCommitted?.UtcTicks}";
+        var f = await Committed.GroupBy(_ => 1)
+            .Select(g => new { Count = g.Count(), MaxId = g.Max(u => (int?)u.Id), MaxCommitted = g.Max(u => u.CommittedAt) })
+            .FirstOrDefaultAsync(ct).ConfigureAwait(false);
+        return f is null ? "0||" : $"{f.Count}|{f.MaxId}|{f.MaxCommitted?.UtcTicks}";
     }
 
-    /// <summary>Changes whenever a timesheet row in the range is added, changed or removed.</summary>
+    /// <summary>Changes whenever a timesheet row in the range is added, changed or removed (one aggregate query).</summary>
     private async Task<string> TimesheetFingerprintAsync(DateOnly start, DateOnly end, CancellationToken ct)
     {
-        var rows = db.AttendanceDaily.Where(a => a.WorkDate >= start && a.WorkDate <= end);
-        var count = await rows.CountAsync(ct).ConfigureAwait(false);
-        var maxUpdated = await rows.MaxAsync(a => (DateTimeOffset?)a.UpdatedAt, ct).ConfigureAwait(false);
-        var maxId = await rows.MaxAsync(a => (int?)a.Id, ct).ConfigureAwait(false);
-        return $"{count}|{maxUpdated?.UtcTicks}|{maxId}";
+        var f = await db.AttendanceDaily.Where(a => a.WorkDate >= start && a.WorkDate <= end).GroupBy(_ => 1)
+            .Select(g => new { Count = g.Count(), MaxUpdated = g.Max(a => (DateTimeOffset?)a.UpdatedAt), MaxId = g.Max(a => (int?)a.Id) })
+            .FirstOrDefaultAsync(ct).ConfigureAwait(false);
+        return f is null ? "0||" : $"{f.Count}|{f.MaxUpdated?.UtcTicks}|{f.MaxId}";
     }
 
     /// <summary>Day records per employee for the range (clipped to today). Callers must not modify them.</summary>

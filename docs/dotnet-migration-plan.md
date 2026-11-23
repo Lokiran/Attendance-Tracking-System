@@ -517,6 +517,31 @@ CPython's algorithm (correctly rounded through the shortest repr) and `PyMath.Ro
 * The pytest cases of `test_attendance_export.py` and the report tests of `test_dashboards_reports.py` are ported to
   xUnit; the PostgreSQL admin test also exports.
 
+### 6.7 As built (phase 8: tests and CI)
+
+* **pytest ports:** the remaining cases of the 253 pytest functions are ported: the rule engines, the attendance,
+  dashboard, permission and WFO read endpoints, the scale tests, the PostgreSQL behaviour tests and the database start-up
+  checks. [`backend-dotnet/tests/COVERAGE.md`](../backend-dotnet/tests/COVERAGE.md) maps every Python test file to its
+  xUnit classes and lists what is not ported and why: Alembic-only migration steps, the psycopg driver check and
+  `test_identities.py`, whose code serves only a standalone Python script. The suite has 363 tests. All pass with
+  `ATS_REQUIRE_POSTGRES=1` against a local PostgreSQL 17 test database; the one skip is the opt-in read-only check of a
+  real database.
+* **Testcontainers:** `ATS_TEST_POSTGRES_CONTAINER=1` starts a throwaway `postgres:16` container
+  (Testcontainers.PostgreSql 4.16.0, MIT) when no `ATS_TEST_POSTGRES_URL` is given. CI uses a service container and
+  the URL instead. The container path is **not verified locally**, because Docker is not running on the development
+  machine; without Docker it fails with Testcontainers' `DockerUnavailableException`.
+* **CI:** `azure-pipelines.yml` (decision D6) runs three jobs: the .NET backend (build with warnings as errors, tests on
+  a PostgreSQL 16 service with the PostgreSQL tests required, TRX results published), the Python backend and the
+  frontend (the same steps as the GitHub workflow). `.github/workflows/ci.yml` gains the same .NET job and keeps its
+  existing jobs until cutover. Neither pipeline has run yet, because the branch is not pushed.
+* **Record cache fingerprints:** each fingerprint (row count, latest change, highest id) is now one aggregate query
+  instead of three. The scale test showed the query count growing with the number of people once an organisation
+  crossed the cache threshold (25 people). Python's count stays flat. The .NET count now grows by 2 queries between 30
+  and 73 people (both above the threshold). The test starts at 30 for that reason, and the reason is written in the
+  test.
+* **Parity scripts:** `tools/parity/compare.py` (reads), `compare_writes.py`, `compare_admin.py` and
+  `compare_reports.py`, described in the backend README; their results are recorded in §6.3–§6.6.
+
 ---
 
 ## 7. Business logic inventory (port line by line)

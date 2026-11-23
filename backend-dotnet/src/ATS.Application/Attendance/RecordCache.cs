@@ -32,6 +32,29 @@ public sealed class RecordCache
 
     private sealed record Entry(LinkedListNode<string> Node, long ExpiresAt, int Size, object Value);
 
+    /// <summary>The memory budget in day records (<see cref="MaxDayRecords"/>; tests lower it).</summary>
+    internal int Budget { get; set; } = MaxDayRecords;
+
+    /// <summary>Day records held now, and the number of entries (for the budget tests).</summary>
+    internal (long Total, int Entries) Usage
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return (_total, _entries.Count);
+            }
+        }
+    }
+
+    internal bool Contains(string key)
+    {
+        lock (_lock)
+        {
+            return _entries.ContainsKey(key);
+        }
+    }
+
     public long WriteVersion => Interlocked.Read(ref _version);
 
     public void BumpWriteVersion() => Interlocked.Increment(ref _version);
@@ -132,7 +155,7 @@ public sealed class RecordCache
 
     private void Store(string key, int size, object value)
     {
-        if (size > MaxDayRecords)
+        if (size > Budget)
         {
             return; // too big to keep; the caller still gets the value
         }
@@ -140,7 +163,7 @@ public sealed class RecordCache
         Drop(key);
         _entries[key] = new Entry(_lru.AddLast(key), Now + TtlSeconds, size, value);
         _total += size;
-        while (_total > MaxDayRecords && _lru.First is { } oldest)
+        while (_total > Budget && _lru.First is { } oldest)
         {
             Drop(oldest.Value);
         }

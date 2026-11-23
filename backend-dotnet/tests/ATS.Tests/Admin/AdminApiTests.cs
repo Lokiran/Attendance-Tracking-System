@@ -21,7 +21,7 @@ public sealed class AdminApiTests : IDisposable
 
     public void Dispose() => _host.Dispose();
 
-    private Org Org => _host.Org;
+    private Auth.Org Org => _host.Org;
 
     private static Dictionary<string, object?> NewUser(params (string Key, object? Value)[] changes)
     {

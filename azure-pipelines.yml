@@ -1,0 +1,161 @@
+# Azure DevOps CI (docs/dotnet-migration-plan.md, decision D6): the same checks as .github/workflows/ci.yml, plus the
+# .NET backend. Every backend test runs against a real PostgreSQL 16 (the production database) and the PostgreSQL tests
+# must not be skipped. The GitHub Actions workflow stays until cutover.
+
+trigger:
+  branches:
+    include: [main, feature/*]
+
+pr:
+  branches:
+    include: [main]
+
+resources:
+  containers:
+    - container: postgres
+      image: postgres:16
+      env:
+        POSTGRES_USER: ats
+        POSTGRES_PASSWORD: ci-only-password
+        POSTGRES_DB: ats_test
+      ports:
+        - 5432:5432
+
+variables:
+  PGPASSWORD: ci-only-password
+  OFFICE_TIMEZONE: Asia/Kolkata
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  - job: backend_dotnet
+    displayName: .NET backend (PostgreSQL 16)
+    timeoutInMinutes: 25
+    pool:
+      vmImage: ubuntu-24.04
+    services:
+      postgres: postgres
+    steps:
+      - checkout: self
+
+      - task: UseDotNet@2
+        displayName: .NET SDK from backend-dotnet/global.json
+        inputs:
+          packageType: sdk
+          useGlobalJson: true
+          workingDirectory: backend-dotnet
+
+      - bash: |
+          for i in $(seq 1 60); do pg_isready -h localhost -p 5432 -U ats -d ats_test && exit 0; sleep 2; done
+          echo "PostgreSQL did not start" >&2; exit 1
+        displayName: Wait for PostgreSQL
+
+      - bash: dotnet build ATS.sln -c Release
+        displayName: Build (warnings are errors)
+        workingDirectory: backend-dotnet
+
+      - bash: >-
+          dotnet test ATS.sln -c Release --no-build
+          --logger "trx;LogFileName=backend-dotnet.trx" --results-directory "$(Agent.TempDirectory)/dotnet-results"
+        displayName: Tests (PostgreSQL tests must not be skipped)
+        workingDirectory: backend-dotnet
+        env:
+          ATS_TEST_POSTGRES_URL: postgresql://ats:ci-only-password@localhost:5432/ats_test
+          ATS_REQUIRE_POSTGRES: "1"
+
+      - task: PublishTestResults@2
+        displayName: Publish .NET test results
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: VSTest
+          testResultsFiles: "$(Agent.TempDirectory)/dotnet-results/*.trx"
+          testRunTitle: .NET backend
+
+  - job: backend_python
+    displayName: Python backend (PostgreSQL 16)
+    timeoutInMinutes: 20
+    pool:
+      vmImage: ubuntu-24.04
+    services:
+      postgres: postgres
+    variables:
+      APP_ENV: test
+      SECRET_KEY: ci-only-secret-key-not-used-anywhere-else-0123456789
+    steps:
+      - checkout: self
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: "3.14"
+
+      - bash: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+        displayName: Install dependencies
+        workingDirectory: backend
+
+      - bash: |
+          for i in $(seq 1 60); do pg_isready -h localhost -p 5432 -U ats -d ats_test && break; sleep 2; done
+          psql -h localhost -U ats -d ats_test -c "CREATE DATABASE ats_migrations_test"
+        displayName: Wait for PostgreSQL and create the migrations database
+
+      - bash: |
+          alembic upgrade head
+          alembic check
+          alembic downgrade base
+          alembic upgrade head
+          alembic current
+        displayName: "Migrations: upgrade, drift check, downgrade, re-upgrade"
+        workingDirectory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://ats:ci-only-password@localhost:5432/ats_migrations_test
+
+      - bash: python -m pytest --require-postgres -rs --junitxml=$(Agent.TempDirectory)/backend-results.xml
+        displayName: Backend tests (PostgreSQL integration tests must not be skipped)
+        workingDirectory: backend
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://ats:ci-only-password@localhost:5432/ats_test
+
+      - task: PublishTestResults@2
+        displayName: Publish Python test results
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: "$(Agent.TempDirectory)/backend-results.xml"
+          testRunTitle: Python backend
+
+  - job: frontend
+    displayName: Frontend
+    timeoutInMinutes: 15
+    pool:
+      vmImage: ubuntu-24.04
+    steps:
+      - checkout: self
+
+      - task: NodeTool@0
+        inputs:
+          versionSpec: "24.x"
+
+      - bash: npm ci
+        displayName: Install dependencies
+        workingDirectory: frontend
+
+      - bash: npx vitest run --reporter=default --reporter=junit --outputFile.junit=$(Agent.TempDirectory)/frontend-results.xml
+        displayName: Tests
+        workingDirectory: frontend
+
+      - bash: npx tsc -b --noEmit
+        displayName: Type-check
+        workingDirectory: frontend
+
+      - bash: npx vite build
+        displayName: Production build
+        workingDirectory: frontend
+
+      - task: PublishTestResults@2
+        displayName: Publish frontend test results
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: "$(Agent.TempDirectory)/frontend-results.xml"
+          testRunTitle: Frontend
