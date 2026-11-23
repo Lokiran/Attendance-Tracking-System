@@ -100,6 +100,23 @@ public sealed partial class WfoService
         Store(ed, await Policies.GetAsync(db, ct).ConfigureAwait(false), dates);
     }
 
+    /// <summary>Backfill (CLI <c>wfo-refresh</c>): classify and store every day of the range, 200 people at a time. The caller saves.</summary>
+    public async Task<int> RefreshRangeAsync(IReadOnlyList<User> employees, DateOnly start, DateOnly end, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(employees);
+        var policyRow = await Policies.GetAsync(db, ct).ConfigureAwait(false);
+        var total = 0;
+        for (var i = 0; i < employees.Count; i += 200)
+        {
+            foreach (var ed in (await ClassifyRangeAsync([.. employees.Skip(i).Take(200)], start, end, ct: ct).ConfigureAwait(false)).Values)
+            {
+                total += Store(ed, policyRow);
+            }
+        }
+
+        return total;
+    }
+
     /// <summary>The day as it effectively is (freshly classified), for the audit log's old / new values.</summary>
     private async Task<Dictionary<string, object?>> OverrideSnapshotAsync(User employee, DateOnly day, CancellationToken ct)
     {

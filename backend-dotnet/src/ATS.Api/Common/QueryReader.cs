@@ -37,7 +37,8 @@ internal sealed partial class QueryReader(HttpRequest request)
     {
         if (_errors.Count > 0)
         {
-            throw new ValidationFailedException($"{_errors[0].Field}: {_errors[0].Message}", details: _errors.ToList());
+            var first = _errors[0];
+            throw new ValidationFailedException(first.Field.Length > 0 ? $"{first.Field}: {first.Message}" : "Invalid request", details: _errors.ToList());
         }
     }
 
@@ -95,6 +96,19 @@ internal sealed partial class QueryReader(HttpRequest request)
         }
 
         return value;
+    }
+
+    /// <summary>An optional bool filter (<c>bool | None = None</c>): null when the parameter is absent or invalid.</summary>
+    public bool? BoolOrNull(string name)
+    {
+        if (Raw(name) is null)
+        {
+            return null;
+        }
+
+        var before = _errors.Count;
+        var value = Bool(name, false);
+        return _errors.Count > before ? null : value;
     }
 
     public bool Bool(string name, bool fallback)

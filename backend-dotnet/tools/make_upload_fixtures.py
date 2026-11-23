@@ -419,6 +419,19 @@ def api_files() -> None:
     month.append(["Intern-9", "Person EMP002", datetime(2026, 10, 2)])
     save(wb, "two_sheet_workbook.xlsx")
 
+    wb = Workbook()  # the device register's asset list (test_devices.py): serial numbers and owners, no MAC addresses
+    ws = wb.active
+    ws.title = "Assets"
+    ws.append(["IT asset register"])
+    ws.append([])
+    ws.append(["Asset Tag", "Serial No.", "Emp. ID", "Employee Name", "Model"])
+    ws.append(["A-001", "pf3a9b2c", None, "Rahul Reddy", "ThinkPad E14"])
+    ws.append(["A-002", "PF3A9B2D", None, "Sneha Rao", "ThinkPad E14"])
+    ws.append(["A-003", "To be filled by O.E.M.", None, "Arjun Kumar", None])
+    ws.append(["A-004", "PF3A9B2E", "NOPE-9", None, "ThinkPad E14"])
+    ws.append(["A-005", "pf3a9b2d", None, "Priya Sharma", None])
+    save(wb, "asset_list.xlsx")
+
     rows = [("E005", "Rahul Reddy", "01-10-2026"), ("E005", "Rahul Reddy", "02/10/2026"), ("E006", "Sneha Rao", "10-01-2026"),
             ("E006", "Sneha Rao", "15-10-2026"), ("E007", "Arjun Kumar", "16/10/2026")]
     pages = []

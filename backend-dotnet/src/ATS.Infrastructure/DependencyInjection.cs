@@ -1,4 +1,6 @@
+using Ats.Application.Admin;
 using Ats.Application.Attendance;
+using Ats.Application.Devices;
 using Ats.Application.Auth;
 using Ats.Application.Dashboard;
 using Ats.Application.Reference;
@@ -50,6 +52,10 @@ public static class DependencyInjection
         services.AddScoped<ReferenceService>();
         services.AddSingleton(sp => WfoMapping.Load(sp.GetRequiredService<AtsSettings>())); // read once, like Python's lru_cache
         services.AddScoped<WfoUploadService>();
+        services.AddScoped<AdminUserService>();
+        services.AddScoped<ConfigurationService>();
+        services.AddScoped<DeviceService>();
+        services.AddScoped<Ats.Application.Seed.DemoSeed>();
         AddValidators(services, typeof(AuthService).Assembly);
         return services;
     }

@@ -3,11 +3,12 @@
 ASP.NET Core port of the FastAPI backend in `../backend`. The React frontend works unchanged; only its proxy target
 moves from port 8000 to 8001 at cutover. Plan, decisions and progress: [`../docs/dotnet-migration-plan.md`](../docs/dotnet-migration-plan.md).
 
-> **Status: phase 5 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
+> **Status: phase 6 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
 > mapping and migrations matching the Alembic schema; sign-in, sessions and role / reporting-line authorisation
 > (`/api/auth/*`); attendance, dashboard, team / organisation and WFO reads, holidays, departments and policy; timesheet
-> uploads (CSV, Excel, PDF: preview, add unknown people, commit, discard), day overrides and the WFO policy. The Python
-> backend remains the working backend until cutover.
+> uploads (CSV, Excel, PDF), day overrides and the WFO policy; administration (users, departments, schedules,
+> holidays, policy, audit log), office sites and devices, automatic-attendance settings and the management commands.
+> Reports and exports come next (phase 7). The Python backend remains the working backend until cutover.
 
 ## Requirements
 
@@ -76,6 +77,22 @@ dotnet run --project src\ATS.Api -- schema-catalog out.json  # write the schema 
   models, so the tests prove .NET reads Python's storage formats. Rebuild it with
   `backend\.venv\Scripts\python.exe backend-dotnet\tools\make_python_fixture.py`.
 
+## Management commands
+
+The same commands as `python -m app.cli`, run with the API's configuration (no web server):
+
+```powershell
+cd backend-dotnet
+dotnet run --project src\ATS.Api -- seed [--reset-demo] [--reset-passwords]   # fictional demo data (refused in production)
+dotnet run --project src\ATS.Api -- create-admin --email admin@company.com --name "Jane Doe" --code ADM100
+dotnet run --project src\ATS.Api -- wfo-refresh --from 2026-10-01 --to 2026-10-31
+```
+
+* `seed` needs `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` and `SEED_DEMO_PASSWORD` (environment or env file). It loads the
+  same people and demo timesheets as the Python seed.
+* `create-admin` asks for the password twice, or takes it from `ATS_ADMIN_PASSWORD`.
+* `wfo-refresh` recomputes the stored work modes after schedule or holiday changes.
+
 ## Sign-in
 
 Exactly the Python mechanism, so the frontend needs no change and both backends accept the same sessions when they
@@ -122,6 +139,7 @@ admin, a manager and an employee, and diffs status and JSON. Run both on a **cop
 `SECRET_KEY` and `DEV_LOGIN_ENABLED=true` (the script's docstring has the command). The rule engines are checked by
 `RuleParityTests` against fixtures from `tools/make_rule_fixtures.py`, which runs the Python code. For writes,
 `tools/parity/compare_writes.py` sends the same uploads, overrides and policy changes to both backends, each on its own
-copy of a database, and compares the responses and the resulting tables. The file readers are checked by
+copy of a database, and compares the responses and the resulting tables; `tools/parity/compare_admin.py` does the same
+for the administration, device and settings endpoints. The file readers are checked by
 `UploadParityTests` against `tools/make_upload_fixtures.py`; its `--local` mode records real files on your machine for
 the opt-in `ATS_UPLOAD_PARITY_FILE` test (never commit those files or that output).

@@ -45,7 +45,9 @@ public static class AuditTrail
     {
         ArgumentNullException.ThrowIfNull(before);
         ArgumentNullException.ThrowIfNull(after);
-        var keys = after.Keys.Where(k => !Equals(before.GetValueOrDefault(k), after.GetValueOrDefault(k))).ToList();
+        // Values compare as Python's == does: lists by their items (the JSON form), not by reference.
+        static string? Key(object? v) => Clean(v)?.ToJsonString();
+        var keys = after.Keys.Where(k => Key(before.GetValueOrDefault(k)) != Key(after.GetValueOrDefault(k))).ToList();
         return (keys.ToDictionary(k => k, k => before.GetValueOrDefault(k)), keys.ToDictionary(k => k, k => after.GetValueOrDefault(k)));
     }
 

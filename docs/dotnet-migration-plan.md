@@ -466,6 +466,31 @@ CPython's algorithm (correctly rounded through the shortest repr) and `PyMath.Ro
 * **Not covered by parity runs:** `.xls` (no tool here writes one for the fixtures); it is read with ExcelDataReader and
   xlrd's rules and tested for its error message only.
 
+
+### 6.5 As built (phase 6: administration, devices, settings, CLI)
+
+* **Endpoints:** users (list, get, create, update, reset password), managers, departments, schedules, holidays, the
+  attendance policy, the audit log, office sites, the device register (list, summary, create, update, import) and the
+  automatic-attendance settings. Services: `AdminUserService`, `ConfigurationService`, `DeviceService` (with the import).
+* **Request bodies** are read by `BodyReader` field by field, in each Pydantic model's order and with its lax JSON rules
+  and messages. It records which fields were sent, so PATCH keeps Pydantic's `exclude_unset` behaviour (an explicit null
+  clears a field). Body problems are reported after the path and query problems, as FastAPI does.
+* **Audit values** now compare lists by content (Python's `==`), so an unchanged `working_days` or presence list is not
+  reported as a change.
+* **CLI:** `seed`, `create-admin` and `wfo-refresh` run inside the API with its configuration and services
+  (`dotnet run --project src\ATS.Api -- <command>`). SEED_* and ATS_ADMIN_PASSWORD come from the environment, then the
+  selected env file. The seed refuses production. It uses a port of CPython's `random.Random` (`PyRandom`: Mersenne
+  Twister with string seeding, `gauss`, `choice`), so it loads exactly the data the Python seed loads.
+* **Verified:**
+  * `tools/parity/compare_admin.py` sent the same 138 requests to Python and .NET, each on its own seeded copy:
+    reads with filters and paging, every write, validation and conflict errors, and a manager's 403s. All responses
+    were identical, and so were the resulting users, departments, schedules, holidays, policy, sites, devices, revoked
+    sessions and audit rows. P14 was found this way and is now copied.
+  * `seed` on two new databases (one per backend) gave identical tables, including all 676 random demo days.
+    `wfo-refresh` and `create-admin` printed the same output and left identical tables (HTTP request ids aside).
+  * The pytest cases of `test_admin.py`, `test_devices.py`, `test_auto_settings.py` and the admin parts of
+    `test_permissions.py` are ported to xUnit, with a PostgreSQL run of the admin endpoints.
+
 ---
 
 ## 7. Business logic inventory (port line by line)
@@ -760,8 +785,9 @@ production where Python refuses.
 | P9 | Month and week labels use `strftime("%b")`, which depends on the locale (English on every current host). .NET must use `CultureInfo.InvariantCulture`. | labels in trends, WFO weeks and month rows |
 | P10 | The `employee_trends` response always has `headcount: 1`. | `routes/attendance.py` |
 | P11 | Storage only: SQLAlchemy writes a `None` it was given in a JSON column as the JSON text `'null'` (the audit log's before/after values), but a column never given as SQL NULL. .NET reads both as null and writes SQL NULL (EF's null-converting converters are an internal API). Both backends read either form as null, so the API output is identical. | `services/audit.py`, `persistence/ValueConversions.cs` |
-| P12 | Python answers 500 where .NET answers a row problem or 422 (kept kinder on purpose, marked `TODO(parity)`): an hours cell of `inf` (OverflowError), a CSV with a lone carriage return inside a record (`csv.Error`), and a workbook whose shared-string index is out of range or that has a chart sheet. | `wfo_upload.parse_hours`, `timesheet_files._csv_rows`, `_xlsx_sheets` |
+| P12 | Python answers 500 where .NET answers a row problem, 422 or keeps the value (kept kinder on purpose, marked `TODO(parity)`): an hours cell of `inf` (OverflowError), a CSV with a lone carriage return inside a record (`csv.Error`), a workbook whose shared-string index is out of range or that has a chart sheet, and a schedule PATCH that sends a required field (name, times, minutes, working days, start date) as null. | `wfo_upload.parse_hours`, `timesheet_files._csv_rows`, `_xlsx_sheets`, `configuration.update_schedule` |
 | P13 | A request whose path **and** JSON body are both invalid (e.g. `PUT /admin/attendance/x/2026-02-30/work-mode` with a bad body): FastAPI lists the path and the body problems together; .NET answers with the body problems only (request bodies are validated before the action runs). Status and the body messages are the same. | `ValidationFilter` |
+| P14 | `PATCH /admin/devices/{id}` answers with the owner the device had **before** the change: Python loads `Device.user` with the device (`lazy="joined"`) and its session does not expire objects on commit, so changing or removing the owner returns the old one. The database (and the next read) has the new owner. | `routes/devices.update_device` |
 
 ---
 

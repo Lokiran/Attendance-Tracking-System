@@ -79,7 +79,7 @@ public sealed class WfoAdminController(WfoService wfo, WfoUploadService uploads)
         return StatusCode(StatusCodes.Status201Created, result);
     }
 
-    private static async Task<byte[]> ReadAtMostAsync(IFormFile file, int limit, CancellationToken ct)
+    internal static async Task<byte[]> ReadAtMostAsync(IFormFile file, int limit, CancellationToken ct)
     {
         await using var stream = file.OpenReadStream();
         var buffer = new byte[Math.Min(limit, Math.Max(0, (int)Math.Min(file.Length, int.MaxValue)))];

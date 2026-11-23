@@ -24,6 +24,12 @@ try
         return await commands.RunAsync(args[0], args.Skip(1).ToList()).ConfigureAwait(false);
     }
 
+    if (args.Length > 0 && Cli.Names.Contains(args[0]))
+    {
+        // Management commands: seed | create-admin | wfo-refresh. No web server.
+        return await Cli.RunAsync(app, args).ConfigureAwait(false);
+    }
+
     StartupChecks.Run(app);
     app.UseAtsPipeline();
     await app.RunAsync().ConfigureAwait(false);
