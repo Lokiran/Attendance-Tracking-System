@@ -1,4 +1,5 @@
 using Ats.Application.Common;
+using Ats.Application.Python;
 using Ats.Infrastructure.Database;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,13 +11,14 @@ namespace Ats.Api.Controllers;
 [Tags("health")]
 public sealed class HealthController(IClock clock, IDatabaseProbe probe) : ControllerBase
 {
-    public sealed record HealthOut(string Status, DateTimeOffset Time);
+    /// <summary>The route returns a plain dict in Python, so <c>time</c> is <c>isoformat()</c> text (<c>+00:00</c>), not Pydantic's <c>Z</c>.</summary>
+    public sealed record HealthOut(string Status, string Time);
 
     public sealed record DatabaseHealthOut(string Status, string Database);
 
     /// <summary>Liveness.</summary>
     [HttpGet]
-    public HealthOut Get() => new("ok", clock.UtcNow);
+    public HealthOut Get() => new("ok", PyFormat.IsoDateTime(clock.UtcNow));
 
     /// <summary>Database connectivity.</summary>
     /// <response code="503">The database cannot be reached (plain body, not the error envelope).</response>

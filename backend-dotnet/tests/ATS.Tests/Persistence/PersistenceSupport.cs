@@ -52,6 +52,9 @@ internal static class Databases
     /// dropped. Like the Python suite's TEST_DATABASE_URL. Unset: the PostgreSQL tests are skipped, unless
     /// ATS_REQUIRE_POSTGRES=1 (CI), which makes them fail instead.
     /// </summary>
+    /// <summary>xUnit collection for every test that uses that one database, so they never run in parallel.</summary>
+    public const string PostgresCollection = "postgres";
+
     public static string? PostgresUrl => Environment.GetEnvironmentVariable("ATS_TEST_POSTGRES_URL");
 
     public static async Task<DatabaseTarget> EmptyPostgresAsync()

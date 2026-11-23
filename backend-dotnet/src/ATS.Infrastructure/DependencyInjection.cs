@@ -1,4 +1,8 @@
+using Ats.Application.Attendance;
 using Ats.Application.Auth;
+using Ats.Application.Dashboard;
+using Ats.Application.Reference;
+using Ats.Application.Wfo;
 using Ats.Application.Configuration;
 using Ats.Application.Data;
 using Ats.Application.Scope;
@@ -21,8 +25,13 @@ public static class DependencyInjection
             return DatabaseTarget.Parse(settings.DatabaseUrl, settings.BaseDirectory);
         });
         services.AddSingleton<IDatabaseProbe, DatabaseProbe>();
+        services.AddSingleton<RecordCache>();
+        services.AddSingleton<RecordCacheInvalidator>();
         services.AddDbContext<AtsDbContext>((sp, options) =>
-            AtsDbContextOptions.Configure(options, sp.GetRequiredService<DatabaseTarget>()));
+        {
+            AtsDbContextOptions.Configure(options, sp.GetRequiredService<DatabaseTarget>());
+            options.AddInterceptors(sp.GetRequiredService<RecordCacheInvalidator>());
+        });
         services.AddScoped<IAtsDb>(sp => sp.GetRequiredService<AtsDbContext>());
 
         // Sign-in: Argon2id passwords, sessions, Entra ID (network calls behind IEntraHttp, 10 s timeout like Python).
@@ -31,6 +40,13 @@ public static class DependencyInjection
         services.AddScoped<IEntraSignIn, EntraSignIn>();
         services.AddScoped<AuthService>();
         services.AddScoped<ScopeService>();
+
+        // Attendance, WFO and dashboard reads (rules engines in Domain, bulk loading and the shared record cache).
+        services.AddScoped<AttendanceData>();
+        services.AddScoped<AttendanceService>();
+        services.AddScoped<WfoService>();
+        services.AddScoped<DashboardService>();
+        services.AddScoped<ReferenceService>();
         AddValidators(services, typeof(AuthService).Assembly);
         return services;
     }

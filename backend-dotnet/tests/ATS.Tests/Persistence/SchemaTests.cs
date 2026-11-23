@@ -10,6 +10,7 @@ namespace Ats.Tests.Persistence;
 /// The EF baseline creates exactly the schema Alembic creates (head 0006), and existing Alembic databases are
 /// adopted without any change other than EF's history table (test_migrations.py's drift check, for .NET).
 /// </summary>
+[Collection(Databases.PostgresCollection)]
 public sealed class SchemaTests
 {
     private static async Task<SchemaCatalog> CatalogOf(DatabaseTarget target)

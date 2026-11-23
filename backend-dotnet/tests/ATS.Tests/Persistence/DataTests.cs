@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Ats.Tests.Persistence;
 
 /// <summary>.NET reads what Python wrote, and writes what Python writes.</summary>
+[Collection(Databases.PostgresCollection)]
 public sealed class DataTests
 {
     private static readonly DateTimeOffset T = new DateTimeOffset(2026, 10, 5, 4, 52, 13, TimeSpan.Zero).AddTicks(1234560);

@@ -22,6 +22,7 @@ public static class AtsJson
         options.Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping; // like json.dumps(ensure_ascii=False)
         options.Converters.Add(new UtcDateTimeOffsetConverter());
         options.Converters.Add(new PythonTimeConverter());
+        options.Converters.Add(new PythonFloatConverter());
         options.Converters.Add(new JsonStringEnumConverter(namingPolicy: null, allowIntegerValues: false));
     }
 
@@ -78,5 +79,20 @@ public sealed class PythonTimeConverter : JsonConverter<TimeOnly>
     {
         ArgumentNullException.ThrowIfNull(writer);
         writer.WriteStringValue(Format(value));
+    }
+}
+
+/// <summary>Floats as Pydantic writes them: <c>100.0</c> and <c>66.7</c> (System.Text.Json would write <c>100</c>).</summary>
+public sealed class PythonFloatConverter : JsonConverter<double>
+{
+    public override double Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType == JsonTokenType.String
+            ? double.Parse(reader.GetString()!, NumberStyles.Float, CultureInfo.InvariantCulture)
+            : reader.GetDouble();
+
+    public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        writer.WriteRawValue(Python.PyJson.FloatRepr(value), skipInputValidation: true);
     }
 }

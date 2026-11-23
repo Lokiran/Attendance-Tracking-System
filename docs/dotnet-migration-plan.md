@@ -411,6 +411,28 @@ CPython's algorithm (correctly rounded through the shortest repr) and `PyMath.Ro
   "String should have at least 1 character", email-validator's reasons). Validators are registered by a small
   reflection helper rather than the FluentValidation.DependencyInjectionExtensions package.
 
+### 6.3 As built (phase 4: attendance, dashboards and WFO reads)
+
+* **Layout:** the rule engines are pure code in `ATS.Domain/Rules` (`AttendanceRules`, `WfoRules`, `PyMath` for
+  Python's rounding and `OfficeTime` for zoneinfo's local-to-UTC rule). Loading, coverage, the record cache and the
+  services are in `ATS.Application` (`Attendance`, `Wfo`, `Dashboard`, `Reference`). The controllers only read
+  parameters and call one service.
+* **Parameters:** `QueryReader` collects errors in FastAPI's order (dependency parameters first, then path, then
+  query) with Pydantic's messages, so a 422 body lists the same errors in the same order.
+* **Record cache:** a singleton with one computation per key at a time, an LRU bound of 1M day records and a 300 s
+  TTL. An EF `SaveChangesInterceptor` bumps the write version when `attendance_daily` or `attendance_uploads`
+  change, which retires cached results, like the Python write hook.
+* **Verified:**
+  * The rule engines are compared with Python on generated fixtures (`tools/make_rule_fixtures.py`, synthetic,
+    seed 20261120): 300 attendance cases in three time zones (with DST), 1,500 day classifications, 300 WFO
+    summaries and over 3,000 rounding cases. All identical.
+  * The endpoints are compared with `tools/parity/compare.py` (admin, manager and employee; values, validation
+    errors, 403/404 scope errors, every sort). On a local copy of the dev SQLite database and on a copy of `ats_db`
+    restored into `ats_test`, 1316 of 1316 responses are identical.
+* **Small fix:** `/api/health` now returns `time` as `isoformat()` text (`+00:00`), because the Python route returns
+  a plain dict rather than a Pydantic model.
+* **Parity quirks** P1–P4 and P6–P11 are kept, each marked `TODO(parity)` in the code.
+
 ---
 
 ## 7. Business logic inventory (port line by line)
@@ -560,7 +582,7 @@ of the month. `covered` is true when present + absent + WFH + leave > 0.
   * **PDF:** words with positions are grouped into rows by height, and into columns by the header's x-bounds. On top
     of that:
     * glued headers are split (`"Time InTime OutTotal Hrs"`, `"Sr No.Code"`);
-    * a date glued to a name, and a glued ID and name (`"20002-ExtSneha Rao"`), are separated;
+    * a date glued to a name, and a glued ID and name (`"10002-ExtAsha Rao"`), are separated;
     * repeated headers on later pages and text outside the header columns (pivot tables) are skipped;
     * a scanned PDF gives 422.
 

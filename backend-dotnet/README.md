@@ -3,9 +3,10 @@
 ASP.NET Core port of the FastAPI backend in `../backend`. The React frontend works unchanged; only its proxy target
 moves from port 8000 to 8001 at cutover. Plan, decisions and progress: [`../docs/dotnet-migration-plan.md`](../docs/dotnet-migration-plan.md).
 
-> **Status: phase 3 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
+> **Status: phase 4 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
 > mapping and migrations matching the Alembic schema; sign-in, sessions and role / reporting-line authorisation
-> (`/api/auth/*`). The Python backend remains the working backend until cutover.
+> (`/api/auth/*`); attendance, dashboard, team / organisation and WFO reads, holidays, departments and policy. The
+> Python backend remains the working backend until cutover.
 
 ## Requirements
 
@@ -106,3 +107,8 @@ temporary SQLite files. Optional:
 * `ATS_TEST_POSTGRES_URL`: a disposable PostgreSQL database whose name contains `test`. **Every table in it is
   dropped.** It enables the PostgreSQL tests (`ATS_REQUIRE_POSTGRES=1` makes them fail instead of skip, for CI).
 * `ATS_TEST_READONLY_DB_URL`: an existing database to read completely through the EF model. Nothing is written.
+
+**Parity with the Python backend:** `tools/parity/compare.py` replays the read endpoints against both backends as an
+admin, a manager and an employee, and diffs status and JSON. Run both on a **copy** of the data with the same
+`SECRET_KEY` and `DEV_LOGIN_ENABLED=true` (the script's docstring has the command). The rule engines are checked by
+`RuleParityTests` against fixtures from `tools/make_rule_fixtures.py`, which runs the Python code.

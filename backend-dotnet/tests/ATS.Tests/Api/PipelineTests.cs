@@ -72,7 +72,7 @@ public sealed class PipelineTests : IClassFixture<PipelineTests.Factory>
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await Json(response);
         body.GetProperty("status").GetString().Should().Be("ok");
-        body.GetProperty("time").GetString().Should().MatchRegex(@"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?Z$");
+        body.GetProperty("time").GetString().Should().MatchRegex(@"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?\+00:00$");
     }
 
     [Fact]
