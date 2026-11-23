@@ -55,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<AdminUserService>();
         services.AddScoped<ConfigurationService>();
         services.AddScoped<DeviceService>();
+        services.AddScoped<Ats.Application.Reports.ReportService>();
         services.AddScoped<Ats.Application.Seed.DemoSeed>();
         AddValidators(services, typeof(AuthService).Assembly);
         return services;

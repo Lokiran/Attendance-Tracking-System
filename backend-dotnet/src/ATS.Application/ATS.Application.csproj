@@ -17,6 +17,8 @@
     <!-- Timesheet files (Uploads/TimesheetFiles.cs). -->
     <PackageReference Include="ExcelDataReader" />
     <PackageReference Include="PdfPig" />
+    <!-- Reports (Reports/*.cs): xlsx with ClosedXML; the PDF is written with PdfPig's builder (standard fonts). -->
+    <PackageReference Include="ClosedXML" />
   </ItemGroup>
   <ItemGroup>
     <!-- The bundled WFO mapping (a copy of backend/config/wfo_mapping.json); WFO_MAPPING_FILE replaces it. -->

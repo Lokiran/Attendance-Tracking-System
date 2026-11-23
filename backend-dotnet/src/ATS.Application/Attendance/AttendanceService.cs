@@ -80,10 +80,19 @@ public sealed class AttendanceService(IAtsDb db, AttendanceData data, WfoService
     /// (<c>attendance_export.month_rows</c>).
     /// </summary>
     public async Task<List<MonthOut>> MonthRowsAsync(User employee, IReadOnlyList<DayRecord> records, DateOnly start, DateOnly end,
-                                                     CancellationToken ct = default)
+                                                     CancellationToken ct = default) =>
+        [.. (await MonthFiguresAsync(employee, records, start, end, ct).ConfigureAwait(false)).Select(m => m.Month)];
+
+    /// <summary>
+    /// WFO and attendance figures for each calendar month of start..end, up to the current month (<c>attendance_export.month_rows</c>),
+    /// with the days without a timesheet that the exports also show.
+    /// </summary>
+    public async Task<List<(MonthOut Month, int NoTimesheetDays)>> MonthFiguresAsync(User employee, IReadOnlyList<DayRecord> records, DateOnly start,
+                                                                                    DateOnly end, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(records);
         var today = data.Today;
-        var output = new List<MonthOut>();
+        var output = new List<(MonthOut, int)>();
         for (var first = new DateOnly(start.Year, start.Month, 1); first <= end; first = first.AddMonths(1))
         {
             var last = OfficeTime.MonthEnd(first);
@@ -95,10 +104,10 @@ public sealed class AttendanceService(IAtsDb db, AttendanceData data, WfoService
 
             var w = await wfo.RangeSummaryAsync(employee, mStart, mEnd, ct).ConfigureAwait(false);
             var s = AttendanceRules.Summarize(records.Where(r => mStart <= r.Date && r.Date <= mEnd), mStart, mEnd);
-            output.Add(new MonthOut(first.ToString("MMM yyyy", System.Globalization.CultureInfo.InvariantCulture), mStart, mEnd,
-                                    (mStart, mEnd) != (first, last), s.PresentDays + s.AbsentDays + s.WfhDays + s.LeaveDays > 0,
-                                    w.WorkingDays, w.WfoDays, w.RequiredDays, w.WfoBand, w.WfhDays, w.LeaveDays, s.AbsentDays,
-                                    s.AttendancePercentage, s.AverageNetMinutes));
+            output.Add((new MonthOut(first.ToString("MMM yyyy", System.Globalization.CultureInfo.InvariantCulture), mStart, mEnd,
+                                     (mStart, mEnd) != (first, last), s.PresentDays + s.AbsentDays + s.WfhDays + s.LeaveDays > 0,
+                                     w.WorkingDays, w.WfoDays, w.RequiredDays, w.WfoBand, w.WfhDays, w.LeaveDays, s.AbsentDays,
+                                     s.AttendancePercentage, s.AverageNetMinutes), s.NoTimesheetDays));
         }
 
         return output;

@@ -46,6 +46,18 @@ internal sealed partial class QueryReader(HttpRequest request)
 
     public int Int(string name, int fallback, int? ge = null, int? le = null) => ParseInt("query", name, Raw(name), ge, le) ?? fallback;
 
+    /// <summary>A required int query parameter: "Field required" when absent.</summary>
+    public int RequiredInt(string name, int? ge = null, int? le = null)
+    {
+        if (Raw(name) is null)
+        {
+            Fail("query", name, "Field required");
+            return 0;
+        }
+
+        return ParseInt("query", name, Raw(name), ge, le) ?? 0;
+    }
+
     public int PathInt(string name, string value) => ParseInt("path", name, value, null, null) ?? 0;
 
     private int? ParseInt(string location, string name, string? raw, int? ge, int? le)

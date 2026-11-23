@@ -46,5 +46,20 @@ public sealed class AdminPostgresTests
         audit.GetProperty("items")[0].GetProperty("actor_name").GetString().Should().Be("Admin User");
         var (_, settings) = await host.Send(HttpMethod.Put, "/api/admin/auto-attendance/settings", csrf, new { wfh_presence_states = new[] { "Busy" } });
         settings.GetProperty("wfh_presence_states").GetRawText().Should().Be("""["Busy"]""");
+
+        // Exports on PostgreSQL (phase 7): a CSV, the employee PDF and the WFO workbook, each audited.
+        foreach (var path in new[]
+                 {
+                     "/api/reports/team-attendance.csv?start=2026-03-01&end=2026-03-10", $"/api/reports/employee-attendance.pdf?employee_id={id}&start=2026-03-01&end=2026-03-10",
+                     "/api/org/wfo/export.xlsx?month=2026-03", "/api/reports/exceptions.csv?start=2026-03-01&end=2026-03-10",
+                 })
+        {
+            var r = await host.Client.GetAsync(new Uri(path, UriKind.Relative));
+            r.StatusCode.Should().Be(HttpStatusCode.OK, path);
+            (await r.Content.ReadAsByteArrayAsync()).Length.Should().BePositive();
+        }
+
+        using var db = host.Db();
+        db.AuditLogs.Count(a => a.Action == "REPORT_EXPORTED").Should().Be(4);
     }
 }

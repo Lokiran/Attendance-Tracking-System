@@ -3,12 +3,12 @@
 ASP.NET Core port of the FastAPI backend in `../backend`. The React frontend works unchanged; only its proxy target
 moves from port 8000 to 8001 at cutover. Plan, decisions and progress: [`../docs/dotnet-migration-plan.md`](../docs/dotnet-migration-plan.md).
 
-> **Status: phase 6 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
+> **Status: phase 7 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
 > mapping and migrations matching the Alembic schema; sign-in, sessions and role / reporting-line authorisation
 > (`/api/auth/*`); attendance, dashboard, team / organisation and WFO reads, holidays, departments and policy; timesheet
 > uploads (CSV, Excel, PDF), day overrides and the WFO policy; administration (users, departments, schedules,
-> holidays, policy, audit log), office sites and devices, automatic-attendance settings and the management commands.
-> Reports and exports come next (phase 7). The Python backend remains the working backend until cutover.
+> holidays, policy, audit log), office sites and devices, automatic-attendance settings and the management commands;
+> CSV reports and the xlsx / PDF exports. The Python backend remains the working backend until cutover.
 
 ## Requirements
 
@@ -77,6 +77,13 @@ dotnet run --project src\ATS.Api -- schema-catalog out.json  # write the schema 
   models, so the tests prove .NET reads Python's storage formats. Rebuild it with
   `backend\.venv\Scripts\python.exe backend-dotnet\tools\make_python_fixture.py`.
 
+## Reports
+
+CSV reports, one employee's attendance as xlsx or PDF, and the WFO workbook, under `/api/reports/*` and
+`/api/org/wfo/export.xlsx`. The PDF and the xlsx use `REPORT_COMPANY_NAME`, `REPORT_LOGO_FILE` (PNG or JPEG, for the
+coloured header band, so a light logo), `REPORT_BRAND_COLOR` and `REPORT_ACCENT_COLOR`; without them they use the app's
+navy and print no logo. The PDF uses the standard PDF fonts (no font files needed).
+
 ## Management commands
 
 The same commands as `python -m app.cli`, run with the API's configuration (no web server):
@@ -140,6 +147,7 @@ admin, a manager and an employee, and diffs status and JSON. Run both on a **cop
 `RuleParityTests` against fixtures from `tools/make_rule_fixtures.py`, which runs the Python code. For writes,
 `tools/parity/compare_writes.py` sends the same uploads, overrides and policy changes to both backends, each on its own
 copy of a database, and compares the responses and the resulting tables; `tools/parity/compare_admin.py` does the same
-for the administration, device and settings endpoints. The file readers are checked by
+for the administration, device and settings endpoints; `tools/parity/compare_reports.py` compares every export (CSV
+bytes, xlsx cells, PDF words and pages). The file readers are checked by
 `UploadParityTests` against `tools/make_upload_fixtures.py`; its `--local` mode records real files on your machine for
 the opt-in `ATS_UPLOAD_PARITY_FILE` test (never commit those files or that output).

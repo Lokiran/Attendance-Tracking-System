@@ -491,6 +491,32 @@ CPython's algorithm (correctly rounded through the shortest repr) and `PyMath.Ro
   * The pytest cases of `test_admin.py`, `test_devices.py`, `test_auto_settings.py` and the admin parts of
     `test_permissions.py` are ported to xUnit, with a PostgreSQL run of the admin endpoints.
 
+
+### 6.6 As built (phase 7: reports and exports)
+
+* **Endpoints:** the five CSV reports (`employee-attendance`, `team-attendance`, `monthly-attendance`,
+  `department-attendance`, `exceptions`), one employee's attendance as xlsx and as PDF, and `GET /org/wfo/export.xlsx`.
+  The download headers are Python's (`attachment; filename="..."`, `Cache-Control: no-store`), every export is audited
+  as `REPORT_EXPORTED`, and a failure is 500 `report_failed`.
+* **CSV** (`CsvReport`): BOM, CRLF, minimal quoting and `safe_cell`. Hours are text, so a negative variance gets the
+  formula apostrophe, as in Python.
+* **xlsx** with ClosedXML 0.105.1 (MIT; its SixLabors.Fonts 1.0.0 is Apache-2.0). ClosedXML treats a leading apostrophe
+  as Excel's quote prefix and drops it, so text that starts with one is written with the apostrophe doubled; the stored
+  value is then the same as openpyxl's.
+* **PDF** with **PdfPig's builder** instead of PdfSharp/MigraDoc. PdfPig is already a dependency (phase 5) and writes the
+  same standard fonts reportlab uses (Helvetica, ZapfDingbats), so no font files or font resolver are needed on Linux.
+  `EmployeePdf` reproduces reportlab's frame, tables (repeated header rows, page breaks), tiles, month chart, header
+  band with logo (PNG or JPEG, embedded once) and "Page n of N" footer.
+* **Verified** with `tools/parity/compare_reports.py`: 167 requests as admin, manager and employee on a copy of the dev
+  database, including scope errors (404 / 403) and parameter errors. CSV files are byte-identical; xlsx files have the
+  same sheets and cell values; PDFs have the same pages and words. This also held with a company name, brand colours
+  and a PNG or JPEG logo, and with names that need formula escaping. On one PDF, the 291 text lines found in both files
+  sit at the same x position and within 1 pt (at most 2.5 pt) vertically, and the logo is in the same box.
+  pdfminer extracts the status bullet (ZapfDingbats code 0x6C, a filled circle in both files) as "n" from reportlab's
+  font dictionary and as "l" from PdfPig's; the script ignores that.
+* The pytest cases of `test_attendance_export.py` and the report tests of `test_dashboards_reports.py` are ported to
+  xUnit; the PostgreSQL admin test also exports.
+
 ---
 
 ## 7. Business logic inventory (port line by line)
