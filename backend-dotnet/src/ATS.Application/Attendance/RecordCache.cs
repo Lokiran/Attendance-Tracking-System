@@ -89,7 +89,17 @@ public sealed class RecordCache
 
         if (waiter is not null)
         {
-            await Task.WhenAny(waiter.Task, Task.Delay(Wait)).ConfigureAwait(false);
+            try
+            {
+                // WaitAsync stops its timer as soon as the other request finishes (CA2027: Task.Delay in
+                // Task.WhenAny would keep a timer running for the full wait).
+                await waiter.Task.WaitAsync(Wait).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // The other request is taking too long: compute here instead of waiting any longer.
+            }
+
             lock (_lock)
             {
                 if (TryGet(key, out var hit))
