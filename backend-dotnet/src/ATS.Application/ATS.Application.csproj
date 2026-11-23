@@ -21,7 +21,7 @@
     <PackageReference Include="ClosedXML" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The bundled WFO mapping (a copy of backend/config/wfo_mapping.json); WFO_MAPPING_FILE replaces it. -->
+    <!-- The bundled WFO mapping (accepted column names and work-mode words); WFO_MAPPING_FILE replaces it. -->
     <Content Include="..\..\config\wfo_mapping.json" Link="config\wfo_mapping.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>

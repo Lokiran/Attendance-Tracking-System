@@ -1,5 +1,8 @@
 # pytest → xUnit coverage map
 
+> Historical: the Python backend and its pytest suite were removed after the port (they are in the git history).
+> This map records how the former tests are covered here.
+
 The Python backend has 253 pytest functions in 21 files (`backend/app/tests`). This map shows where each file's cases
 live in `tests/ATS.Tests`, and which cases have no .NET equivalent and why. Test names follow the Python names
 (`test_login_failure_is_generic` → `Login_failure_is_generic`); several Python cases are sometimes one xUnit theory.

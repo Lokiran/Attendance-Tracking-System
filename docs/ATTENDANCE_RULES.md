@@ -1,8 +1,8 @@
 # Attendance rules
 
 All figures on every dashboard, table and CSV export come from one implementation:
-`backend/app/services/attendance_rules.py` (pure functions, unit-tested in
-`backend/app/tests/test_attendance_rules.py`). Nothing is computed in the browser.
+`backend-dotnet/src/ATS.Domain/Rules/AttendanceRules.cs` (pure functions, unit-tested in
+`backend-dotnet/tests/ATS.Tests/Rules/AttendanceRulesTests.cs`). Nothing is computed in the browser.
 
 Attendance comes from the **timesheets the HR admin imports** (Excel, CSV or PDF; see
 [wfo.md](wfo.md#uploads-phase-5) for reading files). There is no check-in, check-out or correction request

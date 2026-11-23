@@ -1,15 +1,15 @@
 # Database
 
-* Engine: PostgreSQL 15+ (16 recommended). Required extension: `btree_gist` (trusted; created by the
-  first Alembic migration) for the "no overlapping sessions" exclusion constraint.
-* Schema lives in Alembic migrations: `backend/alembic/versions/`. Apply with `alembic upgrade head`
-  from `backend/`.
-* The migration checks for `btree_gist` and stops with an actionable error if it is not available
-  (contrib not installed) or cannot be created (insufficient privilege). Downgrade keeps the
-  extension because it is database-wide.
+* Engine: PostgreSQL 16+. Required extension: `btree_gist` (trusted; created by the baseline migration)
+  for the "no overlapping sessions" exclusion constraint.
+* Schema lives in EF Core migrations: `backend-dotnet/src/ATS.Infrastructure/Persistence/Migrations/`. Create a new
+  database with `dotnet run --project src\ATS.Api -- migrate` from `backend-dotnet/`; a database created by the former
+  Python backend (Alembic) is adopted once with `ef-baseline` instead (see `backend-dotnet/README.md`).
+* The baseline migration runs `CREATE EXTENSION IF NOT EXISTS btree_gist`; it fails with PostgreSQL's error if the
+  extension is not available (contrib not installed) or cannot be created (insufficient privilege).
 * Verify a server end-to-end with `scripts\test-postgres.ps1` (see the main README, Tests).
 * `init/` is mounted into the Docker container and creates the `ats_test` database used by the
-  backend tests on first start.
+  API tests on first start.
 
 Manual (non-Docker) setup in `psql` as a superuser:
 

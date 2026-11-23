@@ -567,6 +567,23 @@ CPython's algorithm (correctly rounded through the shortest repr) and `PyMath.Ro
   unhandled `SqliteException` (it never creates folders). The authentication handler's Information line for every
   anonymous request ("was not authenticated") is now logged only at Warning and above.
 
+### 6.9 Python backend removed (2026-11-23)
+
+* **Removed:** `backend/` (the FastAPI app, Alembic migrations, pytest suite and requirements); the scripts that
+  imported it (`backfill_identities.py`, `copy_sqlite_to_postgres.py`, `scale_benchmark.py`, `pg_probe.py`); the
+  parity and fixture generators in `backend-dotnet/tools/` (they ran the Python code); and the Python jobs in both CI
+  pipelines. All of it remains in the git history. The fixtures they generated stay in `tests/ATS.Tests/Fixtures`.
+* **Moved:** the local, git-ignored settings and data to `backend-dotnet/`: `.env` (an identical copy was already
+  there), `.env.sqlite`, and `data/` (the SQLite database, backups, PostgreSQL dumps and the report logo). Relative
+  paths in the settings resolve against the env file's folder, so they keep pointing at the same files.
+* **Rewritten for .NET:** `scripts/setup.ps1`, `run-local-sqlite.ps1` and `test-postgres.ps1`; `smoke_test.py` now
+  uses only the standard library. The frontend's default proxy target is port 8001 (`vite.config.ts`,
+  `.env.example`). The README, the docs map and the architecture, rules, WFO, scaling, database and sample docs point
+  at the .NET code. `docs/plans/` is left as history.
+* **Still open:** `ef-baseline` on the real database (after a `pg_dump`, with a go-ahead), needed before a future EF
+  migration. The API runs on the database without it. The C# doc comments that name the Python file a piece was
+  ported from are kept as provenance.
+
 ---
 
 ## 7. Business logic inventory (port line by line)

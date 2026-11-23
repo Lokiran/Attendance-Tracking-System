@@ -1,6 +1,7 @@
 """Regenerate the WFO sample files in samples/ (deterministic). Employee codes match the demo seed.
 
-    backend\\.venv\\Scripts\\python.exe scripts\\make_wfo_samples.py
+    pip install openpyxl        # once
+    python scripts\\make_wfo_samples.py
 """
 
 import csv

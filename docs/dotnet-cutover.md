@@ -1,5 +1,11 @@
 # Cutover: Python backend → .NET backend
 
+> **Status (2026-11-23): the Python backend has been removed from the repository.** The .NET API runs on the
+> existing database as it is, and the frontend proxies to it by default. Kept for reference: steps 3–5 (backup,
+> `schema-check`, `ef-baseline`) are **still to be done** on the real database, with a go-ahead, before a future EF
+> migration can be applied with `migrate`. The rollback section no longer applies (the Python code is only in the
+> git history), and the settings now live in `backend-dotnet/.env`.
+
 The .NET API (`backend-dotnet/`) replaces the FastAPI backend (`backend/`) on the **same PostgreSQL database**. The
 frontend does not change: only the address its `/api` proxy points to moves from port 8000 to port 8001. The Python
 backend keeps running, untouched, until the switch is confirmed, so rolling back means pointing the proxy back.

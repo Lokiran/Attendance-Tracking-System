@@ -14,7 +14,6 @@ venv/
 htmlcov/
 *.db
 *.sqlite3
-backend/data/
 
 # Node / frontend
 node_modules/

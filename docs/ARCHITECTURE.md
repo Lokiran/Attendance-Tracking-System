@@ -3,34 +3,35 @@
 ## Overview
 
 ```
-Browser (React SPA, Vite)  ──/api──►  FastAPI (Uvicorn)  ──SQLAlchemy/psycopg──►  PostgreSQL
-   TanStack Query cache                 routes → services → rules engine             Alembic migrations
+Browser (React SPA, Vite)  ──/api──►  ASP.NET Core API (.NET 10)  ──EF Core / Npgsql──►  PostgreSQL
+   TanStack Query cache                 controllers → services → rule engines         EF Core migrations
 ```
 
-* In development, Vite proxies `/api` to FastAPI, so the session cookie is first-party.
+* In development, Vite proxies `/api` to the API (port 8001), so the session cookie is first-party.
   The same layout works behind a reverse proxy in production.
-* **Routes** (`app/api/routes`) handle HTTP concerns only.
-* **Services** (`app/services`) hold business logic and transactions.
-* **Rules** (`attendance_rules.py`) are pure functions.
-* **Scope** (`scope.py`) is the single place where reporting-line authorization is decided.
+* **Controllers** (`ATS.Api/Controllers`) handle HTTP concerns only: parameters, status codes, files.
+* **Services** (`ATS.Application`) hold business logic and transactions.
+* **Rules** (`ATS.Domain/Rules/AttendanceRules.cs`, `WfoRules.cs`) are pure functions.
+* **Scope** (`ATS.Application/Scope/ScopeService.cs`) is the single place where reporting-line authorization is decided.
 
 ```
-backend/app/
-  core/       config (env validation), security (Argon2id, tokens), errors, clock, timeutil
-  db/         engine/session, declarative base, UTCDateTime type
-  models/     users, departments, attendance_sessions, work_schedules, holidays, leave_records (legacy, unused),
-              attendance_corrections, audit_logs, user_sessions, login_attempts, attendance_policy
-  schemas/    Pydantic request/response models
-  services/   attendance_rules, attendance_data (bulk loading of timesheet days), attendance_service,
-              timesheet_files (CSV / Excel / PDF reading), wfo_upload (preview / commit), wfo, wfo_rules,
-              dashboard, admin_users, configuration, org, reports, scope, auth_service, audit, policy
-  api/        deps (auth, CSRF, roles, paging) + routes
-  seed.py     repeatable demo data;  cli.py  seed / create-admin
+backend-dotnet/src/
+  ATS.Api/             Program.cs (also the database and management commands), Controllers/, Middleware/ (request id,
+                       security headers, error envelope, validation), Auth/ (session-cookie authentication, CSRF, roles),
+                       Setup/ (configuration, logging, OpenAPI, CLI, startup checks)
+  ATS.Application/     Attendance/ (data loading, record cache, timesheet coverage), Dashboard/, Wfo/, Uploads/ (CSV /
+                       Excel / PDF reading, preview / commit), Reports/ (CSV, xlsx, PDF), Admin/, Devices/, Scope/,
+                       Auth/ (sign-in, sessions, Entra), Audit/, Configuration/ (env file + validation), Seed/
+  ATS.Domain/          Entities/ (users, departments, attendance_sessions, work_schedules, holidays, attendance_daily,
+                       uploads, audit_logs, user_sessions, login_attempts, attendance_policy, devices, legacy tables),
+                       Rules/ (attendance and WFO rule engines)
+  ATS.Infrastructure/  Persistence/ (AtsDbContext, value conversions, migrations, schema catalog, database commands),
+                       Database/ (URL parsing, startup probe), Security/ (Argon2id, Entra ID token validation)
 frontend/src/
   lib/        api client (CSRF, errors), query hooks, formatting (office timezone), date helpers
   auth/       AuthProvider (session state), RequireAuth (UX-only route guard)
   components/ ui (design system), layout, charts (Recharts), attendance feature components
-  pages/      employee, team, approvals, reports, admin/*
+  pages/      employee, team, reports, admin/*, wfo/*
 ```
 
 ## Data model highlights
@@ -53,12 +54,12 @@ subtrees are computed with a recursive CTE (`UNION`, so they're cycle-safe).
 
 ## Authentication and session security
 
-* **Sign-in methods**: Microsoft Entra ID (OIDC authorization code + PKCE, `app/services/entra.py`),
+* **Sign-in methods**: Microsoft Entra ID (OIDC authorization code + PKCE, `ATS.Infrastructure/Security/EntraSignIn.cs`),
   email/password (`PASSWORD_LOGIN_ENABLED`) and a dev-only bypass (`DEV_LOGIN_ENABLED`, refused in
-  production). All three end in the same server-side session (`auth_service.start_session`), and each
+  production). All three end in the same server-side session (`AuthService.StartSessionAsync`), and each
   login is audited with its method. Entra users are matched by `users.graph_user_id`, or on first sign-in
   by email (then linked). Unknown, inactive or differently linked accounts are refused.
-* **Passwords**: Argon2id (argon2-cffi); rehashed on login if parameters change. Minimum 10
+* **Passwords**: Argon2id (argon2-cffi compatible encoding); rehashed on login if parameters change. Minimum 10
   characters with letters and digits. The hash is never serialized.
 * **Sessions**: a random 256-bit token sits in an `HttpOnly` cookie `ats_session`
   (`SameSite=Lax`; `Secure` is forced on in production). The database stores only

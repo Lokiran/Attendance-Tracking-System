@@ -1,4 +1,4 @@
-// Shapes returned by the FastAPI backend (see /api/docs).
+// Shapes returned by the API (backend-dotnet; see /api/docs).
 
 export type Role = "EMPLOYEE" | "MANAGER" | "ADMIN";
 /** Computed per employee-day from the imported timesheets. */

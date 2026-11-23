@@ -282,7 +282,7 @@ export function AttendanceImportPage() {
             <li><b>Work mode</b> / location: WFO, Office, On-site → office; WFH, Remote → home; also Leave, Holiday, Week off.</li>
             <li><b>Hours</b> (7.5, 7:30 or 07:30:00) or <b>In</b> / <b>Out</b> times. With hours, a day counts as WFO only with enough office hours.</li>
             <li><b>Source</b>: rows marked Badge, Swipe or Access card are badge evidence (office).</li>
-            <li>Accepted header names and values are configured in <code>backend/config/wfo_mapping.json</code>. Examples: <code>samples/</code> in the repository.</li>
+            <li>Accepted header names and values are configured in <code>backend-dotnet/config/wfo_mapping.json</code>. Examples: <code>samples/</code> in the repository.</li>
           </ul>
         </details>
       </Card>

@@ -1,20 +1,25 @@
-"""End-to-end smoke test against a running ATS stack (seeded demo data).
+r"""End-to-end smoke test against a running ATS stack (seeded demo data).
 
-Usage (PowerShell, backend + frontend running):
+Usage (PowerShell, API + frontend running, database seeded with `dotnet run --project src\ATS.Api -- seed`):
     $env:SEED_ADMIN_PASSWORD = "..."; $env:SEED_DEMO_PASSWORD = "..."
-    backend\\.venv\\Scripts\\python.exe scripts\\smoke_test.py [--base http://127.0.0.1:5173]
+    python scripts\smoke_test.py [--base http://127.0.0.1:5173]
 
 It goes through the Vite proxy by default, exactly like the browser, and exercises login, CSRF,
 timesheet-based attendance, scoping, dashboards, a timesheet import preview, CSV export and logout. Each check prints PASS/FAIL.
+Standard library only, so any Python 3.11+ runs it.
 """
 
 import argparse
+import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.request
+import uuid
 from datetime import date, timedelta
-
-import httpx
+from email.message import Message
+from http.cookies import SimpleCookie
 
 RESULTS: list[tuple[str, bool, str]] = []
 
@@ -25,34 +30,76 @@ def check(name: str, ok: bool, detail: str = "") -> bool:
     return ok
 
 
+class Response:
+    def __init__(self, status: int, body: bytes, headers: Message):
+        self.status_code, self.content, self.headers = status, body, headers
+
+    @property
+    def text(self) -> str:
+        return self.content.decode("utf-8", errors="replace")
+
+    def json(self):
+        return json.loads(self.content)
+
+
+def request(url: str, method: str = "GET", data: bytes | None = None, headers: dict | None = None,
+            timeout: float = 30) -> Response:
+    req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return Response(r.status, r.read(), r.headers)
+    except urllib.error.HTTPError as e:
+        return Response(e.code, e.read(), e.headers)
+
+
 class Session:
     def __init__(self, base: str):
-        self.c = httpx.Client(base_url=base, timeout=30)
-        self.csrf = None
+        self.base, self.cookies, self.csrf = base, SimpleCookie(), None
 
-    def login(self, email: str, password: str) -> httpx.Response:
-        r = self.c.post("/api/auth/login", json={"email": email, "password": password})
+    def _call(self, method: str, path: str, data: bytes | None = None, headers: dict | None = None) -> Response:
+        headers = dict(headers or {})
+        if self.cookies:
+            headers["Cookie"] = "; ".join(f"{k}={m.value}" for k, m in self.cookies.items())
+        r = request(self.base + path, method, data, headers)
+        for value in r.headers.get_all("Set-Cookie") or []:
+            self.cookies.load(value)
+            for k, m in list(self.cookies.items()):
+                if m["max-age"] == "0" or not m.value:
+                    del self.cookies[k]
+        return r
+
+    def login(self, email: str, password: str) -> Response:
+        r = self._call("POST", "/api/auth/login", json.dumps({"email": email, "password": password}).encode(),
+                       {"Content-Type": "application/json"})
         if r.status_code == 200:
             self.csrf = r.json()["csrf_token"]
         return r
 
     def get(self, path, **params):
-        return self.c.get(path, params=params)
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        return self._call("GET", path + (f"?{query}" if query else ""))
 
-    def post(self, path, json=None, csrf=True):
-        headers = {"X-CSRF-Token": self.csrf} if csrf and self.csrf else {}
-        return self.c.post(path, json=json if json is not None else {}, headers=headers)
+    def post(self, path, json_body=None, csrf=True):
+        headers = {"Content-Type": "application/json"}
+        if csrf and self.csrf:
+            headers["X-CSRF-Token"] = self.csrf
+        return self._call("POST", path, json.dumps(json_body if json_body is not None else {}).encode(), headers)
 
     def upload(self, path, filename: str, content: bytes):
-        return self.c.post(path, files={"file": (filename, content, "text/csv")}, headers={"X-CSRF-Token": self.csrf or ""})
+        boundary = uuid.uuid4().hex
+        head = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+                'Content-Type: text/csv\r\n\r\n')
+        body = head.encode() + content + f"\r\n--{boundary}--\r\n".encode()
+        return self._call("POST", path, body, {"Content-Type": f"multipart/form-data; boundary={boundary}",
+                                               "X-CSRF-Token": self.csrf or ""})
 
 
 def wait_for(base: str) -> None:
     for _ in range(60):
         try:
-            if httpx.get(base + "/api/health/db", timeout=2).status_code == 200:
+            if request(base + "/api/health/db", timeout=2).status_code == 200:
                 return
-        except httpx.HTTPError:
+        except OSError:
             pass
         time.sleep(1)
     sys.exit(f"Stack at {base} did not become healthy")
@@ -68,7 +115,7 @@ def main() -> int:
     wait_for(args.base)
 
     # --- frontend served
-    index = httpx.get(args.base + "/")
+    index = request(args.base + "/")
     check("frontend index served", index.status_code == 200 and '<div id="root">' in index.text)
 
     # --- authentication

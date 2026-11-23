@@ -1,11 +1,12 @@
-"""Read-only cutover check against a running API on real data (docs/dotnet-cutover.md, step 7).
+"""Read-only check of a running API on real data.
 
 Signs in with a real account, reads the health endpoints, the signed-in person's attendance and (for a manager or an
-administrator) the dashboards, a CSV report and the WFO view, then signs out. With --compare it sends the same reads
-to a second backend (the Python one, on the same database) and reports any response that differs.
+administrator) the dashboards, CSV reports, WFO views and administration lists, then signs out. With --compare it sends
+the same reads to a second deployment on the same database (for example a new version next to the current one) and
+reports any response that differs.
 
     $env:ATS_CHECK_EMAIL = "you@company.example"        # the password is asked for (or ATS_CHECK_PASSWORD)
-    python backend-dotnet/tools/cutover_check.py --base http://127.0.0.1:8001 [--compare http://127.0.0.1:8000]
+    python backend-dotnet/tools/cutover_check.py --base http://127.0.0.1:8001 [--compare http://127.0.0.1:8002]
 
 Nothing is changed except what any sign-in writes: a session row and the LOGIN / LOGOUT audit entries.
 The password is never printed or logged. Exit code 1 when a check fails or a compared response differs.
@@ -75,7 +76,7 @@ def strip(value):
 
 
 def media(headers) -> str:
-    """The media type without parameters: .NET adds "; charset=utf-8" to JSON, FastAPI does not."""
+    """The media type without parameters (deployments may differ in the charset parameter)."""
     return headers.get("Content-Type", "").split(";")[0].strip().lower()
 
 
@@ -104,7 +105,7 @@ def reads(user: dict) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://127.0.0.1:8001", help="the API to check (default: the .NET API)")
-    ap.add_argument("--compare", help="a second API on the same database (e.g. the Python one at :8000)")
+    ap.add_argument("--compare", help="a second deployment on the same database")
     args = ap.parse_args()
     email = os.environ.get("ATS_CHECK_EMAIL") or input("Email: ").strip()
     password = os.environ.get("ATS_CHECK_PASSWORD") or getpass.getpass("Password (not shown): ")

@@ -3,10 +3,10 @@
 Every employee-day gets a **work mode**: `OFFICE` (WFO), `WFH`, `LEAVE`, `HOLIDAY` or `WEEKOFF`. Monthly
 policy figures (WFO days, WFO %, weekly progress, compliance, shortfall) are computed from those days.
 
-* Rules: `backend/app/services/wfo_rules.py` (pure functions, unit-tested)
-* Data: `backend/app/services/wfo.py`
-* Uploads: `backend/app/services/wfo_upload.py`
-* Excel report: `backend/app/services/wfo_export.py`
+* Rules: `backend-dotnet/src/ATS.Domain/Rules/WfoRules.cs` (pure functions, unit-tested)
+* Data: `backend-dotnet/src/ATS.Application/Wfo/WfoService.cs`
+* Uploads: `backend-dotnet/src/ATS.Application/Uploads/WfoUploadService.cs` (file reading: `TimesheetFiles.cs`)
+* Excel report: `backend-dotnet/src/ATS.Application/Reports/ReportService.cs`
 
 ## Where the data lives
 
@@ -26,14 +26,14 @@ Check-in no longer exists (attendance comes from imported timesheets); `attendan
 
 Reads always recompute from the evidence, so they are never stale. The stored result is refreshed in the
 same transaction as every write: upload commit and override. Use
-`python -m app.cli wfo-refresh --from YYYY-MM-DD --to YYYY-MM-DD` after changing schedules or holidays.
+`dotnet run --project src\ATS.Api -- wfo-refresh --from YYYY-MM-DD --to YYYY-MM-DD` (in `backend-dotnet\`) after changing schedules or holidays.
 
 ## Classification (Phase 1)
 
 Highest priority first:
 
 0. **Admin override** (`MANUAL_OVERRIDE`): always wins. All of the day's worked time counts in that mode.
-1. **Uploaded work-mode column** (`UPLOAD_COLUMN`). Accepted text is in `backend/config/wfo_mapping.json`:
+1. **Uploaded work-mode column** (`UPLOAD_COLUMN`). Accepted text is in `backend-dotnet/config/wfo_mapping.json`:
    WFO, Office, On-site → OFFICE; WFH, Remote → WFH; also leave / holiday / week-off words.
 2. **Badge / swipe / office-access rows** of an upload (`BADGE`) → OFFICE.
 3. **Office Wi-Fi** (`WIFI`) → OFFICE.
@@ -171,7 +171,7 @@ period with that total.
   logo, the key figures, the office-days-by-month chart, the monthly table and every day, with page numbers.
   Months without a timesheet ask for nothing and are labelled "No timesheet".
 * **Branding** comes from settings, not from the code: `REPORT_COMPANY_NAME`, `REPORT_LOGO_FILE` (a light logo
-  for the coloured band; keep the file in `backend/data/`, which is not in git), `REPORT_BRAND_COLOR` and
+  for the coloured band; keep the file in `backend-dotnet/data/`, which is not in git), `REPORT_BRAND_COLOR` and
   `REPORT_ACCENT_COLOR`. Without them the report uses the app's navy and prints the company name as text.
 
 ## WFO status colours

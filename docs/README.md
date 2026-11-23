@@ -9,8 +9,8 @@ Start with the project [README](../README.md) (setup, running, tests). Then:
 | [wfo.md](wfo.md) | Work-from-office rules, timesheet imports (formats, matching people, periods), exports and branding |
 | [design-system.md](design-system.md) | Colour tokens and how the UI uses them |
 | [scaling.md](scaling.md) | What grows with headcount and the measured dashboard timings |
-| [dotnet-cutover.md](dotnet-cutover.md) | The checklist for switching from the Python backend to the .NET backend, and rolling back |
-| [dotnet-migration-plan.md](dotnet-migration-plan.md) | The .NET port: inventory, decisions, parity rules and what each phase built |
+| [dotnet-cutover.md](dotnet-cutover.md) | Historical: the checklist used to switch from the former Python backend to the .NET API |
+| [dotnet-migration-plan.md](dotnet-migration-plan.md) | The .NET port of the former Python backend: inventory, decisions, parity rules and what each phase built |
 
 Plans and history, in [plans/](plans/):
 
@@ -23,24 +23,25 @@ Plans and history, in [plans/](plans/):
 
 ## Where to change what
 
-| To change… | Backend (`backend/app/`) | Frontend (`frontend/src/`) |
+Backend paths are under `backend-dotnet/src/`.
+
+| To change… | Backend | Frontend (`frontend/src/`) |
 |---|---|---|
-| How a day or a month is counted | `services/attendance_rules.py`, `services/wfo_rules.py` | — |
-| Reading timesheet files (Excel, CSV, PDF) | `services/timesheet_files.py` | — |
-| Import checks, matching people, preview and commit | `services/wfo_upload.py` | `pages/wfo/AttendanceImportPage.tsx` |
-| Accepted column names and work-mode words | `backend/config/wfo_mapping.json` | — |
-| Employee dashboard | `api/routes/attendance.py`, `services/attendance_service.py` | `pages/MyDashboard.tsx`, `components/attendance/` |
-| Team and organisation dashboards | `api/routes/dashboard.py`, `services/dashboard.py` | `pages/TeamDashboard.tsx`, `pages/admin/OrgDashboard.tsx` |
-| WFO pages | `api/routes/wfo.py`, `services/wfo.py` | `pages/wfo/WfoPages.tsx`, `components/wfo/WfoParts.tsx` |
-| PDF / Excel export of one employee | `services/attendance_export.py` | `components/attendance/EmployeeAttendanceView.tsx` (Export menu) |
-| CSV reports, organisation Excel | `services/reports.py`, `services/wfo_export.py` | `pages/ReportsPage.tsx` |
-| Who may see whom | `services/scope.py` | — |
-| Sign-in (password, Microsoft, dev) | `api/routes/auth.py`, `services/auth_service.py`, `services/entra.py` | `pages/LoginPage.tsx`, `auth/` |
-| Employees, departments, schedules, holidays, policy | `api/routes/admin.py`, `services/admin_users.py`, `services/configuration.py` | `pages/admin/` |
-| Offices and the device register (laptop → person for Wi-Fi) | `api/routes/devices.py`, `services/devices.py`, `models/devices.py` | `pages/admin/DevicesAdmin.tsx` |
-| Organisation hierarchy view | `services/org.py` | `pages/admin/HierarchyPage.tsx` |
-| Database tables | `models/` + a new migration in `backend/alembic/versions/` | — |
-| Settings (environment variables) | `core/config.py`, `backend/.env.example` | `frontend/.env.example` |
+| How a day or a month is counted | `ATS.Domain/Rules/AttendanceRules.cs`, `ATS.Domain/Rules/WfoRules.cs` | — |
+| Reading timesheet files (Excel, CSV, PDF) | `ATS.Application/Uploads/TimesheetFiles.cs` (`PdfTimesheet.cs`, `XlsxReader.cs`) | — |
+| Import checks, matching people, preview and commit | `ATS.Application/Uploads/WfoUploadService.cs` | `pages/wfo/AttendanceImportPage.tsx` |
+| Accepted column names and work-mode words | `backend-dotnet/config/wfo_mapping.json` | — |
+| Employee dashboard | `ATS.Api/Controllers/AttendanceController.cs`, `ATS.Application/Attendance/AttendanceService.cs` | `pages/MyDashboard.tsx`, `components/attendance/` |
+| Team and organisation dashboards, hierarchy | `ATS.Api/Controllers/DashboardController.cs`, `ATS.Application/Dashboard/DashboardService.cs` | `pages/TeamDashboard.tsx`, `pages/admin/OrgDashboard.tsx`, `pages/admin/HierarchyPage.tsx` |
+| WFO pages | `ATS.Api/Controllers/WfoReadController.cs`, `WfoAdminController.cs`, `ATS.Application/Wfo/WfoService.cs` | `pages/wfo/WfoPages.tsx`, `components/wfo/WfoParts.tsx` |
+| PDF / Excel export of one employee | `ATS.Application/Reports/EmployeeReport.cs`, `EmployeePdf.cs`, `EmployeeWorkbook.cs` | `components/attendance/EmployeeAttendanceView.tsx` (Export menu) |
+| CSV reports, organisation Excel | `ATS.Api/Controllers/ReportsController.cs`, `ATS.Application/Reports/ReportService.cs`, `CsvReport.cs` | `pages/ReportsPage.tsx` |
+| Who may see whom | `ATS.Application/Scope/ScopeService.cs` | — |
+| Sign-in (password, Microsoft, dev) | `ATS.Api/Controllers/AuthController.cs`, `ATS.Application/Auth/AuthService.cs`, `ATS.Infrastructure/Security/EntraSignIn.cs` | `pages/LoginPage.tsx`, `auth/` |
+| Employees, departments, schedules, holidays, policy | `ATS.Api/Controllers/AdminController.cs`, `ATS.Application/Admin/AdminUserService.cs`, `ConfigurationService.cs` | `pages/admin/` |
+| Offices and the device register (laptop → person for Wi-Fi) | `ATS.Api/Controllers/DevicesController.cs`, `ATS.Application/Devices/DeviceService.cs` | `pages/admin/DevicesAdmin.tsx` |
+| Database tables | `ATS.Domain/Entities/`, `ATS.Infrastructure/Persistence/AtsDbContext.cs` + a new EF Core migration in `ATS.Infrastructure/Persistence/Migrations/` (an existing database needs `ef-baseline` once first) | — |
+| Settings (environment variables) | `ATS.Application/Configuration/SettingsLoader.cs`, `AtsSettings.cs`, `backend-dotnet/.env.example` | `frontend/.env.example` |
 | Colours and themes | — | `index.css` |
 
-Tests sit next to the code they cover: `backend/app/tests/` (pytest) and `frontend/src/test/` (Vitest).
+Tests: `backend-dotnet/tests/ATS.Tests/` (xUnit) and `frontend/src/test/` (Vitest).

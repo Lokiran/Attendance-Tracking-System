@@ -25,10 +25,8 @@ dashboards grow, and only with the size of the scope and the date range.
    date-range query instead of thousands of `IN (...)` parameters. Department and manager names are
    loaded with two small queries instead of being joined onto every row.
 3. **A fast rules loop.** Schedule lookups and shift start times are worked out once per department
-   and day, not once per person and day. Days without sessions take a fast path. Python's garbage
-   collector is paused while records are built (they form no reference cycles). Otherwise its
-   repeated full scans make the cost grow faster than the data.
-4. **One computation per page** (`app/services/record_cache.py`). A dashboard page sends 7–9
+   and day, not once per person and day. Days without sessions take a fast path.
+4. **One computation per page** (`ATS.Application/Attendance/RecordCache.cs`). A dashboard page sends 7–9
    requests (cards, table, charts) for the same people and dates. The first request computes the
    day records and per-person summaries. The others wait for that result and reuse it instead of
    repeating the work.
@@ -53,7 +51,9 @@ dashboards grow, and only with the size of the scope and the date range.
 
 ## Measured results
 
-`scripts/scale_benchmark.py` on a development laptop (SQLite, one server process). The numbers are
+Measured with the former Python backend's benchmark script (removed with that backend; the .NET API uses the same
+queries, cache and rules, and `ScaleTests` check that the query count stays flat as the organisation grows) on a
+development laptop (SQLite, one server process). The numbers are
 the time until **all** of a dashboard page's API calls have answered, with calls sent in parallel
 like a browser and nothing cached:
 
@@ -68,11 +68,7 @@ like a browser and nothing cached:
 Revisiting the page or changing tabs within the same range takes a few hundred ms, because the
 computation is reused.
 
-Run it yourself (it builds a throw-away database in the temp folder, never your real one):
-
-```powershell
-backend\.venv\Scripts\python.exe scripts\scale_benchmark.py --employees 5000
-```
+The benchmark script is in the git history (`scripts/scale_benchmark.py`, before the Python backend was removed).
 
 ## Guidance for production
 
