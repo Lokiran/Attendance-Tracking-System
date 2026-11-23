@@ -542,6 +542,31 @@ CPython's algorithm (correctly rounded through the shortest repr) and `PyMath.Ro
 * **Parity scripts:** `tools/parity/compare.py` (reads), `compare_writes.py`, `compare_admin.py` and
   `compare_reports.py`, described in the backend README; their results are recorded in §6.3–§6.6.
 
+### 6.8 As built (phase 9: container, docs and cutover)
+
+* **Container:** `backend-dotnet/Dockerfile` is a multi-stage build. The SDK is `sdk:10.0.404-noble` (the `global.json`
+  pin) and the runtime is `aspnet:10.0.15-noble`, which includes ICU and tzdata; it runs as the image's non-root user.
+  `URLS=http://+:8001` and `ATS_HOME=/app` are set, settings come from environment variables or a mounted
+  `/app/.env`, and `.dockerignore` keeps env files and databases out of the build context. Docker is not running on
+  the development machine, so the image has **not been built locally**. The `api_image` job in both pipelines builds
+  it, runs `migrate` and `schema-check` against PostgreSQL 16 with `APP_ENV=production`, starts it and checks
+  `/api/health/db`. Locally, the same steps were run on the published output (`dotnet publish`, the Dockerfile's
+  command) with environment variables only and `ATS_HOME` set: migrate, seed, and the existing end-to-end
+  `scripts/smoke_test.py` through a Vite dev server proxying to it. All 33 checks passed.
+* **Cutover:** [`dotnet-cutover.md`](dotnet-cutover.md) covers configuration, backup (`pg_dump`), `schema-check`,
+  `ef-baseline`, starting the API, a read-only check on real data, switching the Vite proxy (`VITE_DEV_BACKEND_URL`)
+  or a reverse proxy, watching, and rolling back.
+* **`tools/cutover_check.py`** (standard library only): a read-only check with a real account. It compares each read
+  with the Python backend when `--compare` is given. On a seeded database it found every response identical:
+  23 reads as an administrator, 16 as a manager and 9 as an employee. JSON media types are compared without
+  `charset`, because .NET adds `; charset=utf-8` and FastAPI does not.
+* **Rollback safety:** `ef-baseline` adds `__EFMigrationsHistory`, which made `alembic check` report drift; a later
+  `--autogenerate` would also have proposed dropping the table. `backend/alembic/env.py` now ignores that table
+  (`include_name`), with a pytest test. The Python backend needs this commit before step 5 of the cutover.
+* **Small fixes:** `migrate` refuses a SQLite path whose folder does not exist, with a clear message instead of an
+  unhandled `SqliteException` (it never creates folders). The authentication handler's Information line for every
+  anonymous request ("was not authenticated") is now logged only at Warning and above.
+
 ---
 
 ## 7. Business logic inventory (port line by line)

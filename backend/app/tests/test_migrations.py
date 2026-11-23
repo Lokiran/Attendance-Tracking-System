@@ -60,6 +60,20 @@ def test_migrated_schema_matches_models(empty_schema):
     assert relevant == [], relevant
 
 
+def test_check_ignores_the_dotnet_migration_history_table(empty_schema):
+    """`ef-baseline` (the .NET backend) adds __EFMigrationsHistory; Alembic must not propose dropping it."""
+    from alembic import command
+    from sqlalchemy import text
+
+    from app.tests.migration_utils import alembic_config
+
+    upgrade()
+    with engine.begin() as conn:
+        conn.execute(text('CREATE TABLE "__EFMigrationsHistory" ("MigrationId" VARCHAR(150) PRIMARY KEY, '
+                          '"ProductVersion" VARCHAR(32) NOT NULL)'))
+    command.check(alembic_config())  # raises when autogenerate finds differences
+
+
 def test_offline_postgres_upgrade_sql():
     sql = offline_sql(PG_URL)
     ext = sql.index("CREATE EXTENSION IF NOT EXISTS btree_gist")

@@ -119,6 +119,47 @@ jobs:
           name: backend-dotnet-test-results
           path: dotnet-results/*.trx
 
+  api-image:
+    name: .NET API container image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ats
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: ats_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ats -d ats_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the image, migrate, start it and check health (ICU, tzdata, PostgreSQL)
+        env:
+          RUNNER_TEMP_DIR: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          docker build -t ats-api:ci backend-dotnet
+          # Settings for the container only (the same keys as backend-dotnet/.env.example); production mode, PostgreSQL 16.
+          cat > "$RUNNER_TEMP_DIR/ats.env" <<'ENV'
+          APP_ENV=production
+          DATABASE_URL=postgresql+psycopg://ats:ci-only-password@localhost:5432/ats_test
+          SECRET_KEY=ci-only-secret-key-not-used-anywhere-else-0123456789
+          OFFICE_TIMEZONE=Asia/Kolkata
+          CORS_ORIGINS=https://ats.example
+          ENV
+          docker run --rm --network host --env-file "$RUNNER_TEMP_DIR/ats.env" ats-api:ci migrate
+          docker run --rm --network host --env-file "$RUNNER_TEMP_DIR/ats.env" ats-api:ci schema-check
+          docker run -d --name ats-api --network host --env-file "$RUNNER_TEMP_DIR/ats.env" ats-api:ci
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8001/api/health/db && break; sleep 2; done
+          curl -fsS http://127.0.0.1:8001/api/health/db | grep -Eq '"database": ?"postgresql"'
+          curl -fsS http://127.0.0.1:8001/api/auth/providers
+          docker logs ats-api
+          docker rm -f ats-api
+
   frontend:
     name: Frontend
     runs-on: ubuntu-24.04

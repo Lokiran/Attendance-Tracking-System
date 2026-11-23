@@ -35,6 +35,13 @@ public sealed class DatabaseCommands(DatabaseTarget target, TextWriter output)
 
     public async Task<int> MigrateAsync(CancellationToken ct = default)
     {
+        if (target.SqliteFile is { } file && Path.GetDirectoryName(Path.GetFullPath(file)) is { } folder && !Directory.Exists(folder))
+        {
+            // Only the database file is created, never folders: a typo in the path must not create a new tree.
+            await output.WriteLineAsync($"The folder for the SQLite file does not exist: {folder}. Create it first.").ConfigureAwait(false);
+            return 2;
+        }
+
         await using var context = AtsDbContextOptions.CreateMigrationContext(target, allowCreateSqliteFile: true);
         var applied = (await context.Database.GetAppliedMigrationsAsync(ct).ConfigureAwait(false)).ToList();
         if (applied.Count == 0)

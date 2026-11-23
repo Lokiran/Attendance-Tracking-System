@@ -78,6 +78,8 @@ ATS/
 │   ├── data/               Local only, git-ignored: SQLite database, backups/, branding/ (report logo)
 │   ├── .env.example        PostgreSQL profile · .env.sqlite.example: local SQLite profile
 │   └── requirements.txt
+├── backend-dotnet/     ASP.NET Core port of backend/ (same API, same database), replacing it at cutover:
+│                       see backend-dotnet/README.md and docs/dotnet-cutover.md
 ├── frontend/
 │   └── src/
 │       ├── pages/          One file per screen (admin/ and wfo/ grouped)

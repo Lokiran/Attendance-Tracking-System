@@ -16,6 +16,14 @@ _url = normalize_database_url(config.attributes.get("sqlalchemy.url") or get_set
 config.set_main_option("sqlalchemy.url", _url.replace("%", "%%"))
 target_metadata = Base.metadata
 
+# The .NET backend's `ef-baseline` adds this bookkeeping table to an adopted database. It is not a model table, so
+# autogenerate / `alembic check` must not propose dropping it (that would matter after a rollback to this backend).
+_FOREIGN_TABLES = {"__EFMigrationsHistory"}
+
+
+def include_name(name, type_, parent_names) -> bool:
+    return not (type_ == "table" and name in _FOREIGN_TABLES)
+
 
 def run_migrations_offline() -> None:
     context.configure(url=config.get_main_option("sqlalchemy.url"), target_metadata=target_metadata,
@@ -34,7 +42,7 @@ def run_migrations_online() -> None:
             connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
             connection.commit()  # end the implicit transaction so Alembic's own one commits the version
         context.configure(connection=connection, target_metadata=target_metadata, render_as_batch=True,
-                          compare_type=True)
+                          compare_type=True, include_name=include_name)
         with context.begin_transaction():
             context.run_migrations()
 

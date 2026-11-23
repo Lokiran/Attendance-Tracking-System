@@ -3,13 +3,11 @@
 ASP.NET Core port of the FastAPI backend in `../backend`. The React frontend works unchanged; only its proxy target
 moves from port 8000 to 8001 at cutover. Plan, decisions and progress: [`../docs/dotnet-migration-plan.md`](../docs/dotnet-migration-plan.md).
 
-> **Status: phase 8 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
-> mapping and migrations matching the Alembic schema; sign-in, sessions and role / reporting-line authorisation
-> (`/api/auth/*`); attendance, dashboard, team / organisation and WFO reads, holidays, departments and policy; timesheet
-> uploads (CSV, Excel, PDF), day overrides and the WFO policy; administration (users, departments, schedules,
-> holidays, policy, audit log), office sites and devices, automatic-attendance settings and the management commands;
-> CSV reports and the xlsx / PDF exports; the pytest suite ported to xUnit and CI for Azure DevOps and GitHub. The Python
-> backend remains the working backend until cutover.
+> **Status: all nine phases built; ready for cutover.** Every endpoint, rule, import, export and management command
+> of the Python backend is ported and checked against it (the parity results are in the plan), the pytest suite is
+> ported to xUnit, CI covers both backends and the container image, and the cutover steps are in
+> [`../docs/dotnet-cutover.md`](../docs/dotnet-cutover.md). The Python backend remains the working backend until the
+> cutover is done.
 
 ## Requirements
 
@@ -50,6 +48,22 @@ dotnet run --project src\ATS.Api            # http://127.0.0.1:8001
 
 * Health: `GET http://127.0.0.1:8001/api/health`, `GET http://127.0.0.1:8001/api/health/db`
 * API docs: `http://127.0.0.1:8001/api/docs` (Swagger UI), `/api/redoc`, `/api/openapi.json`
+
+## Container
+
+```powershell
+docker build -t ats-api backend-dotnet                                    # from the repository root
+docker run --rm -p 127.0.0.1:8001:8001 --env-file <env file> ats-api       # the API on port 8001
+docker run --rm --env-file <env file> ats-api schema-check                  # any command below, same image
+```
+
+The image (`Dockerfile`) builds with the SDK pinned in `global.json` and runs on the Ubuntu ASP.NET Core runtime,
+which includes ICU and tzdata, as the non-root `app` user. It listens on port 8001 on all interfaces in the container
+(`URLS`) and finds its files under `ATS_HOME=/app`, so an env file can be mounted at `/app/.env`. Nothing secret is in
+the image, and `.dockerignore` keeps env files and databases out of the build context. CI builds the image, runs
+`migrate` and `schema-check` against PostgreSQL 16 with `APP_ENV=production`, starts it and checks `/api/health/db`.
+To reach PostgreSQL on the host from the container, use `host.docker.internal` (Docker Desktop) or `--network host`
+(Linux) in `DATABASE_URL`.
 
 ## Database
 
@@ -143,6 +157,11 @@ temporary SQLite files. [`tests/COVERAGE.md`](tests/COVERAGE.md) maps the Python
 * `ATS_TEST_POSTGRES_CONTAINER=1`: without a URL, start a throwaway `postgres:16` container with Testcontainers for the
   PostgreSQL tests (Docker must be running).
 * `ATS_TEST_READONLY_DB_URL`: an existing database to read completely through the EF model. Nothing is written.
+
+**Cutover check:** `tools/cutover_check.py` signs in with a real account (the password is asked for, never shown),
+reads the main endpoints for that role and signs out. With `--compare http://127.0.0.1:8000` it sends the same reads
+to the Python backend on the same database and reports any difference. It is step 7 of
+[`../docs/dotnet-cutover.md`](../docs/dotnet-cutover.md).
 
 **Parity with the Python backend:** `tools/parity/compare.py` replays the read endpoints against both backends as an
 admin, a manager and an employee, and diffs status and JSON. Run both on a **copy** of the data with the same

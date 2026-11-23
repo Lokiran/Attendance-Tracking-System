@@ -9,6 +9,8 @@ Start with the project [README](../README.md) (setup, running, tests). Then:
 | [wfo.md](wfo.md) | Work-from-office rules, timesheet imports (formats, matching people, periods), exports and branding |
 | [design-system.md](design-system.md) | Colour tokens and how the UI uses them |
 | [scaling.md](scaling.md) | What grows with headcount and the measured dashboard timings |
+| [dotnet-cutover.md](dotnet-cutover.md) | The checklist for switching from the Python backend to the .NET backend, and rolling back |
+| [dotnet-migration-plan.md](dotnet-migration-plan.md) | The .NET port: inventory, decisions, parity rules and what each phase built |
 
 Plans and history, in [plans/](plans/):
 

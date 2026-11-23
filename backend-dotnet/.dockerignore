@@ -1,0 +1,14 @@
+# Only the API's sources go into the build context. Never send env files, databases or build output.
+**/bin/
+**/obj/
+**/TestResults/
+**/.env
+**/.env.*
+!.env.example
+**/*.sqlite3
+**/*.db
+tests/
+tools/
+**/.vs/
+**/.vscode/
+**/*.user

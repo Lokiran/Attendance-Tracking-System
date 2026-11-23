@@ -43,6 +43,8 @@ internal static class ConfigurationSetup
             .MinimumLevel.Is(Level(services.GetRequiredService<IConfiguration>()["LOG_LEVEL"]))
             .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
             .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+            // The base authentication handler logs every anonymous request ("was not authenticated") at Information.
+            .MinimumLevel.Override("Ats.Api.Auth.SessionAuthenticationHandler", LogEventLevel.Warning)
             .Enrich.FromLogContext()
             .WriteTo.Console(outputTemplate:
                 "{Timestamp:yyyy-MM-dd HH:mm:ss,fff} {Level:u4} {SourceContext} {Message:lj}{NewLine}{Exception}",

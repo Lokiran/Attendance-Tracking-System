@@ -59,6 +59,17 @@ public sealed class SchemaTests
     }
 
     [Fact]
+    public async Task Migrate_refuses_a_sqlite_file_in_a_missing_folder()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "ats-missing-" + Guid.NewGuid().ToString("N"));
+        var target = DatabaseTarget.Parse($"sqlite:///{Path.Combine(folder, "x.sqlite3").Replace('\\', '/')}", Path.GetTempPath());
+        var output = new StringWriter();
+        (await new DatabaseCommands(target, output).MigrateAsync()).Should().Be(2);
+        output.ToString().Should().Contain("The folder for the SQLite file does not exist");
+        Directory.Exists(folder).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Migrate_is_idempotent_and_refuses_alembic_or_unknown_databases()
     {
         var target = await Databases.NewMigratedSqliteAsync();
