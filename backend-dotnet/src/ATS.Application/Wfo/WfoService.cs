@@ -41,7 +41,7 @@ public sealed record EmployeeDays(User Employee, IReadOnlyList<ClassifiedDay> Da
 /// WFO reads (<c>app/services/wfo.py</c>): each employee-day's evidence is classified with the pure rules and summarised
 /// against the policy. Reads always recompute from the evidence, so they are never stale.
 /// </summary>
-public sealed partial class WfoService(IAtsDb db, AttendanceData data, ScopeService scope)
+public sealed partial class WfoService(IAtsDb db, AttendanceData data, ScopeService scope, IClock clock)
 {
     /// <summary>Six days either side, so the weeks around a period can be sized.</summary>
     public const int WeekPad = 6;

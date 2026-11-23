@@ -29,6 +29,9 @@ internal sealed partial class QueryReader(HttpRequest request)
 
     private void Fail(string location, string name, string message) => _errors.Add(new ValidationErrors.Detail($"{location}.{name}", message));
 
+    /// <summary>A problem with a request-body field (reported after the query and path problems, as FastAPI does).</summary>
+    public void BodyError(string field, string message) => _errors.Add(new ValidationErrors.Detail(field, message));
+
     /// <summary>Throws the 422 with every problem found so far.</summary>
     public void ThrowIfInvalid()
     {

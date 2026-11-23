@@ -14,6 +14,13 @@
     <!-- Services query through IAtsDb (DbSet / LINQ); the provider and DbContext live in Infrastructure. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="FluentValidation" />
+    <!-- Timesheet files (Uploads/TimesheetFiles.cs). -->
+    <PackageReference Include="ExcelDataReader" />
+    <PackageReference Include="PdfPig" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The bundled WFO mapping (a copy of backend/config/wfo_mapping.json); WFO_MAPPING_FILE replaces it. -->
+    <Content Include="..\..\config\wfo_mapping.json" Link="config\wfo_mapping.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ATS.Tests" />

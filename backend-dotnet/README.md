@@ -3,10 +3,11 @@
 ASP.NET Core port of the FastAPI backend in `../backend`. The React frontend works unchanged; only its proxy target
 moves from port 8000 to 8001 at cutover. Plan, decisions and progress: [`../docs/dotnet-migration-plan.md`](../docs/dotnet-migration-plan.md).
 
-> **Status: phase 4 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
+> **Status: phase 5 of 9**: scaffold, configuration, logging, OpenAPI, health and the request pipeline; domain model, EF Core
 > mapping and migrations matching the Alembic schema; sign-in, sessions and role / reporting-line authorisation
-> (`/api/auth/*`); attendance, dashboard, team / organisation and WFO reads, holidays, departments and policy. The
-> Python backend remains the working backend until cutover.
+> (`/api/auth/*`); attendance, dashboard, team / organisation and WFO reads, holidays, departments and policy; timesheet
+> uploads (CSV, Excel, PDF: preview, add unknown people, commit, discard), day overrides and the WFO policy. The Python
+> backend remains the working backend until cutover.
 
 ## Requirements
 
@@ -93,6 +94,14 @@ share a database and `SECRET_KEY`:
   checks is Python's: session (401), CSRF (403 `csrf_failed`), then role (403 `forbidden`). `ScopeService` holds the
   reporting-line rules: a manager sees their whole subtree.
 
+## Timesheet uploads
+
+`POST /api/admin/attendance-uploads` takes a CSV / TSV / TXT, Excel (.xlsx, .xlsm, .xls) or PDF file of at most 5 MB
+and returns a preview; nothing changes until `POST .../{id}/commit`. Column names and values (work modes, badge
+sources) are matched through `config/wfo_mapping.json` (bundled; set `WFO_MAPPING_FILE` to use another file, absolute
+or relative to the API folder). Unknown employee IDs can be added with `POST .../{id}/create-employees`; they get a
+placeholder `@imported.example.com` address and no usable password.
+
 ## Build and test
 
 ```powershell
@@ -111,4 +120,8 @@ temporary SQLite files. Optional:
 **Parity with the Python backend:** `tools/parity/compare.py` replays the read endpoints against both backends as an
 admin, a manager and an employee, and diffs status and JSON. Run both on a **copy** of the data with the same
 `SECRET_KEY` and `DEV_LOGIN_ENABLED=true` (the script's docstring has the command). The rule engines are checked by
-`RuleParityTests` against fixtures from `tools/make_rule_fixtures.py`, which runs the Python code.
+`RuleParityTests` against fixtures from `tools/make_rule_fixtures.py`, which runs the Python code. For writes,
+`tools/parity/compare_writes.py` sends the same uploads, overrides and policy changes to both backends, each on its own
+copy of a database, and compares the responses and the resulting tables. The file readers are checked by
+`UploadParityTests` against `tools/make_upload_fixtures.py`; its `--local` mode records real files on your machine for
+the opt-in `ATS_UPLOAD_PARITY_FILE` test (never commit those files or that output).

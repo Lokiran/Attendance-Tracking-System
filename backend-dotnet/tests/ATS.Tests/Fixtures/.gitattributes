@@ -1,0 +1,6 @@
+# Test fixtures are byte-exact: never convert line endings (a PDF stores byte offsets).
+*.pdf binary
+*.xlsx binary
+*.xls binary
+*.gz binary
+*.sqlite3 binary

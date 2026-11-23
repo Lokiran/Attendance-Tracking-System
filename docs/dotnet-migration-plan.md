@@ -433,6 +433,39 @@ CPython's algorithm (correctly rounded through the shortest repr) and `PyMath.Ro
   a plain dict rather than a Pydantic model.
 * **Parity quirks** P1–P4 and P6–P11 are kept, each marked `TODO(parity)` in the code.
 
+
+### 6.4 As built (phase 5: timesheet import)
+
+* **Readers** (`ATS.Application/Uploads`):
+  * CSV is a port of the C `csv` reader's state machine (`PyCsv`), with the same decoding and delimiter choice.
+  * `.xlsx` / `.xlsm` use a small reader of our own (`XlsxReader`: `System.IO.Compression` and `XmlReader`) that copies
+    openpyxl's read-only mode: rows cut to the sheet's declared dimension, its date / timedelta format rules and
+    built-in format table. ExcelDataReader could not reproduce the row widths, which decide where copied swipe times
+    land. ExcelDataReader is used for `.xls` only, with xlrd's date rules.
+  * PDF uses PdfPig letters. pdfminer's characters and text lines are rebuilt from them (advance width, a box one font
+    size high, `group_objects` with line_overlap 0.5 and char_margin 2.0); the word, row, column and glue rules are
+    ported line by line.
+  * `PyStrptime` reproduces CPython 3.14 `strptime` for the date and time formats used.
+* **Packages:** `ExcelDataReader` 3.9.0 (MIT) and `PdfPig` 0.1.16 (Apache-2.0; the approved "UglyToad.PdfPig" is
+  published under the NuGet id `PdfPig`). ClosedXML is not needed until the exports (phase 7).
+* **Mapping:** `config/wfo_mapping.json` is a copy of the Python file, shipped next to the API; `WFO_MAPPING_FILE` replaces
+  it, as in Python.
+* **Writes:** preview, create-employees, commit and override run in one transaction each and save in between where
+  Python flushes; PostgreSQL takes the same `FOR UPDATE` row lock on the upload.
+* **Verified:**
+  * Readers: `tools/make_upload_fixtures.py` records what Python reads from 148 synthetic files (CSV variants, workbooks
+    with every value type and number format, 63 PDFs with glued labels, IDs and dates) and the value parsers on 75 inputs
+    and 62 date sequences. .NET reads all of them identically. The ten real June–October timesheet PDFs and four real
+    workbooks on this machine also read identically (opt-in test, files never committed).
+  * Writes: `tools/parity/compare_writes.py` sent the same uploads (samples, synthetic workbooks, an error file, real
+    PDFs and a real workbook), create-employees, commits (with and without overwrite), discards, overrides and policy
+    changes to Python and .NET, each on its own copy of the dev database. All 77 responses were identical, and so were
+    the resulting `attendance_daily`, uploads, upload rows, users, policy and the 406 audit rows (P11 aside).
+  * The pytest cases of `test_wfo_upload.py`, `test_timesheet_files.py` and the write tests of `test_wfo_api.py` are
+    ported to xUnit, with a PostgreSQL run of the whole upload lifecycle.
+* **Not covered by parity runs:** `.xls` (no tool here writes one for the fixtures); it is read with ExcelDataReader and
+  xlrd's rules and tested for its error message only.
+
 ---
 
 ## 7. Business logic inventory (port line by line)
@@ -582,7 +615,7 @@ of the month. `covered` is true when present + absent + WFH + leave > 0.
   * **PDF:** words with positions are grouped into rows by height, and into columns by the header's x-bounds. On top
     of that:
     * glued headers are split (`"Time InTime OutTotal Hrs"`, `"Sr No.Code"`);
-    * a date glued to a name, and a glued ID and name (`"10002-ExtAsha Rao"`), are separated;
+    * a date glued to a name, and a glued ID and name (`"10002-ExtAsha Quill"`), are separated;
     * repeated headers on later pages and text outside the header columns (pivot tables) are skipped;
     * a scanned PDF gives 422.
 
@@ -727,6 +760,8 @@ production where Python refuses.
 | P9 | Month and week labels use `strftime("%b")`, which depends on the locale (English on every current host). .NET must use `CultureInfo.InvariantCulture`. | labels in trends, WFO weeks and month rows |
 | P10 | The `employee_trends` response always has `headcount: 1`. | `routes/attendance.py` |
 | P11 | Storage only: SQLAlchemy writes a `None` it was given in a JSON column as the JSON text `'null'` (the audit log's before/after values), but a column never given as SQL NULL. .NET reads both as null and writes SQL NULL (EF's null-converting converters are an internal API). Both backends read either form as null, so the API output is identical. | `services/audit.py`, `persistence/ValueConversions.cs` |
+| P12 | Python answers 500 where .NET answers a row problem or 422 (kept kinder on purpose, marked `TODO(parity)`): an hours cell of `inf` (OverflowError), a CSV with a lone carriage return inside a record (`csv.Error`), and a workbook whose shared-string index is out of range or that has a chart sheet. | `wfo_upload.parse_hours`, `timesheet_files._csv_rows`, `_xlsx_sheets` |
+| P13 | A request whose path **and** JSON body are both invalid (e.g. `PUT /admin/attendance/x/2026-02-30/work-mode` with a bad body): FastAPI lists the path and the body problems together; .NET answers with the body problems only (request bodies are validated before the action runs). Status and the body messages are the same. | `ValidationFilter` |
 
 ---
 
