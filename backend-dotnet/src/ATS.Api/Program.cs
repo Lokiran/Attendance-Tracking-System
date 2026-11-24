@@ -5,7 +5,7 @@ using Ats.Infrastructure;
 using Ats.Infrastructure.Database;
 using Ats.Infrastructure.Persistence;
 
-// Office Attendance Tracker API (ASP.NET Core port of backend/, see docs/dotnet-migration-plan.md).
+// Office Attendance Tracker API (ASP.NET Core; port of the former Python backend, see backend-dotnet/README.md).
 try
 {
     var builder = WebApplication.CreateBuilder(args);

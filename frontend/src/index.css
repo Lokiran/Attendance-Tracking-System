@@ -4,7 +4,7 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /*
- * Colour system: the 60-30-10 rule (see docs/design-system.md).
+ * Colour system: the 60-30-10 rule.
  *
  *   60 % DOMINANT   neutral canvas and cards        --bg, --surface, --surface-2/3, --border, --text*
  *   30 % SECONDARY  navy structure: sidebar, top     --secondary*, --secondary-soft (table headers)

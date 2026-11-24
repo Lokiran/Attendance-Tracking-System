@@ -4,9 +4,9 @@ The backend of the Office Attendance Tracker: an ASP.NET Core (.NET 10) API on P
 in `../frontend` through its `/api` proxy (port 8001).
 
 > **History:** this API replaced the original FastAPI (Python) backend, which was removed after the port. Every
-> endpoint, rule, import, export and management command was ported and checked response by response against it; the
-> plan, decisions and parity results are in [`../docs/dotnet-migration-plan.md`](../docs/dotnet-migration-plan.md).
-> The Python code is in the git history (before the commit that removed `backend/`).
+> endpoint, rule, import, export and management command was ported and checked response by response against it.
+> The Python code and the migration plan are in the git history (before the commits that removed `backend/` and
+> `docs/`). The few behaviours kept on purpose for compatibility are listed under [Parity notes](#parity-notes).
 
 ## Requirements
 
@@ -163,3 +163,25 @@ suite to these tests.
 **Deployment check:** `tools/cutover_check.py` (standard library Python) signs in with a real account (the password is
 asked for, never shown), reads the main endpoints for that role and signs out; `--compare <url>` also diffs every read
 against a second deployment on the same database.
+
+## Parity notes
+
+Behaviours kept from the original Python backend on purpose, so existing clients and stored data see no change. The
+code marks each with `TODO(parity) P<n>` (or `parity note P<n>`).
+
+| # | Behaviour |
+|---|---|
+| P1 | `/api/dashboard/employees?sort=check_in` is accepted but sorts by name (the service has no `check_in` key). |
+| P2 | Two holidays on one date (organisation-wide and department): the attendance rules take the first name, the WFO calendar the last. |
+| P3 | `GET /api/policy` creates the singleton policy row when it is missing, and saves it. |
+| P4 | Trend buckets clip `end` to the range but not `start`, so a week bucket can start before the requested start date. |
+| P5 | Row error messages quote values the Python way (`unknown employee '10001' (not in the app yet)`); they are stored and shown in the UI. |
+| P6 | Employee endpoints answer 404 for people out of scope; WFO endpoints answer 403. |
+| P7 | `/api/departments` counts members with one grouped query (Python counted per department); the output is identical. |
+| P8 | Sorting and lower-casing use ordinal, culture-independent rules (`ToLowerInvariant`, `StringComparer.Ordinal`, stable sorts). |
+| P9 | Month and week labels use the invariant culture (English month names on every host). |
+| P10 | The employee trends response always has `headcount: 1`. |
+| P11 | Storage only: a missing audit before/after value is written as SQL NULL; the JSON text `'null'` written by Python reads as null too. |
+| P12 | Where Python answered 500, the API is kinder: an `inf` hours cell, a lone carriage return inside a CSV record, a broken workbook or a chart sheet, and a schedule PATCH sending a required field as null give a row problem or 422. |
+| P13 | A request with an invalid path **and** an invalid body reports the body problems only (FastAPI listed both). |
+| P14 | `PATCH /api/admin/devices/{id}` answers with the owner the device had **before** the change; the database and the next read have the new owner. |

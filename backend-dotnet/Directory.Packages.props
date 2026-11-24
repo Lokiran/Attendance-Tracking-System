@@ -1,6 +1,6 @@
 <Project>
   <!-- One version per package for the whole solution. Packages outside the approved stack need sign-off first
-       (see docs/dotnet-migration-plan.md, section 9). -->
+       (the approved package list; ask before adding a package). -->
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>

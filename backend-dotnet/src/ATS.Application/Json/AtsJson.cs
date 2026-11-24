@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 namespace Ats.Application.Json;
 
 /// <summary>
-/// JSON options that reproduce the FastAPI / Pydantic wire format (docs/dotnet-migration-plan.md §4):
+/// JSON options that reproduce the FastAPI / Pydantic wire format (kept so the frontend and stored data see no change):
 /// snake_case properties, enums as their string values, nulls always written, UTC datetimes as
 /// <c>2026-11-19T08:39:37.577436Z</c> (6 fraction digits, omitted when zero) and times as <c>09:30:00</c>.
 /// </summary>

@@ -15,19 +15,16 @@ computed by the backend from database records.
 
 More detail:
 * [backend-dotnet/README.md](backend-dotnet/README.md): the API (configuration, database commands, container, tests).
-* [docs/ATTENDANCE_RULES.md](docs/ATTENDANCE_RULES.md): exact calculation rules.
-* [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): structure, security model, full API list.
-* [docs/README.md](docs/README.md): index of all docs, and where to change what.
 
 The backend was originally written in Python (FastAPI) and has been replaced by the .NET API with identical
-behaviour; see [docs/dotnet-migration-plan.md](docs/dotnet-migration-plan.md).
+behaviour.
 
 ## Features
 
 * **Timesheet imports** (HR admin)
   * Upload the month's timesheet as Excel (.xlsx / .xls), CSV / TSV / TXT or a PDF of the sheet; preview,
     then import. The month's sheet of a workbook is found automatically, swapped dates are corrected, and
-    unknown employee IDs can be added in one step. See [docs/wfo.md](docs/wfo.md#uploads-phase-5).
+    unknown employee IDs can be added in one step.
   * A committed timesheet covers its months (up to the day before the import) for the people in it: their
     scheduled days in that period that are not in the file are absent; a month not imported yet shows
     "No timesheet", not absent. A partial file never marks anyone else absent.
@@ -86,8 +83,6 @@ ATS/
 │       ├── lib/            API client, queries, types, formatting, dates
 │       ├── auth/  hooks/   Sign-in state, URL filter state
 │       └── test/           Vitest suite
-├── docs/               Rules, architecture, WFO and imports; plans/ (open work, history).
-│                       Start at docs/README.md: it also maps "to change X, edit Y"
 ├── samples/            Example import files (also used by the API tests)
 ├── azure-pipelines.yml CI for Azure DevOps (API tests on PostgreSQL 16, container image, frontend)
 ├── docker-compose.yml  Optional PostgreSQL
@@ -285,7 +280,7 @@ weekly progress ("2 of 3 days") and policy compliance are computed from those da
   values are in `backend-dotnet/config/wfo_mapping.json`.
 * **Policy:** 3 office days a week, 12 a month, at least 4 h in the office for a day to count (editable).
 
-Rules, API, upload format and assumptions: [docs/wfo.md](docs/wfo.md). After changing schedules or
+The full API list is in the API docs (http://127.0.0.1:8001/api/docs). After changing schedules or
 holidays, recompute stored work modes with:
 
 ```powershell
@@ -419,7 +414,7 @@ npm run build
 * The check-in, session and correction tables from earlier versions are kept, unused.
 * Login throttling is per email/IP in the database. There is no CAPTCHA or account-lockout
   notification.
-* Dashboards compute statistics in the API process, with an in-memory record cache; see
-  [docs/scaling.md](docs/scaling.md) for the measured limits.
+* Dashboards compute statistics in the API process, with an in-memory record cache (at most about
+  1,000,000 day records); thousands of employees over long ranges take a few seconds per page.
 * Notifications (email/Slack) and multi-location holiday calendars
   are out of scope for this version.

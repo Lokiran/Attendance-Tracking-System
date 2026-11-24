@@ -1,7 +1,7 @@
 namespace Ats.Domain.Rules;
 
 // Port of backend/app/services/attendance_rules.py: the single source of truth for day statuses and period metrics.
-// No database or framework access, so every rule is unit-testable. Rules (also in docs/ATTENDANCE_RULES.md):
+// No database or framework access, so every rule is unit-testable. Rules:
 // * OFFICE -> PRESENT; with recorded hours below min_present_minutes (on a past day) -> ABSENT (BELOW_MINIMUM).
 //   Without hours the day is still PRESENT ("not recorded") and never short.
 // * WFH -> WFH (a working day, not office attendance). LEAVE / HOLIDAY / WEEKOFF -> LEAVE / HOLIDAY / WEEKEND.
