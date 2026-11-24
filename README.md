@@ -89,7 +89,6 @@ ATS/
 ├── docs/               Rules, architecture, WFO and imports; plans/ (open work, history).
 │                       Start at docs/README.md: it also maps "to change X, edit Y"
 ├── samples/            Example import files (also used by the API tests)
-├── database/           PostgreSQL notes + Docker init script (creates ats_test)
 ├── azure-pipelines.yml CI for Azure DevOps (API tests on PostgreSQL 16, container image, frontend)
 ├── docker-compose.yml  Optional PostgreSQL
 ├── .env.example        Variables for docker compose
@@ -201,6 +200,7 @@ cd C:\Dev\ATS
 copy .env.example .env      # then set POSTGRES_PASSWORD
 docker compose up -d db
 docker compose ps           # wait for "healthy"
+docker compose exec db createdb -U ats ats_test   # once: the disposable database for the PostgreSQL tests
 ```
 
 **Option B: local PostgreSQL.** In `psql` as a superuser:
