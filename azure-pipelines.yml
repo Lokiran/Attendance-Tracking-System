@@ -86,10 +86,11 @@ jobs:
           set -euo pipefail
           docker build -t ats-api:ci backend-dotnet
           # Settings for the container only (the same keys as backend-dotnet/.env.example); production mode, PostgreSQL 16.
-          cat > "$RUNNER_TEMP_DIR/ats.env" <<'ENV'
+          CI_SECRET_KEY="$(openssl rand -hex 32)"
+          cat > "$RUNNER_TEMP_DIR/ats.env" <<ENV
           APP_ENV=production
           DATABASE_URL=postgresql+psycopg://ats:ci-only-password@localhost:5432/ats_test
-          SECRET_KEY=ci-only-secret-key-not-used-anywhere-else-0123456789
+          SECRET_KEY=${CI_SECRET_KEY}
           OFFICE_TIMEZONE=Asia/Kolkata
           CORS_ORIGINS=https://ats.example
           ENV
