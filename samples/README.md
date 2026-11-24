@@ -1,7 +1,7 @@
 # Sample WFO files
 
 Import them at **Admin → Import attendance**. Employee codes match the demo seed (`dotnet run --project src\ATS.Api -- seed` in `backend-dotnet\`).
-Regenerate them with `python scripts\make_wfo_samples.py` (needs `pip install openpyxl`).
+Keep them: the API tests import both files (`UploadApiTests`).
 
 | File | What it shows |
 |---|---|

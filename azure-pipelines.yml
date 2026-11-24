@@ -1,5 +1,5 @@
 # Azure DevOps CI: the .NET API's tests against a real PostgreSQL 16 (the production database; the PostgreSQL tests
-# must not be skipped), the container image, and the frontend checks. Same jobs as .github/workflows/ci.yml.
+# must not be skipped), the container image, and the frontend checks.
 
 trigger:
   branches:

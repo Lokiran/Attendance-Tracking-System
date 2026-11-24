@@ -7,7 +7,7 @@
   Python backend (Alembic) is adopted once with `ef-baseline` instead (see `backend-dotnet/README.md`).
 * The baseline migration runs `CREATE EXTENSION IF NOT EXISTS btree_gist`; it fails with PostgreSQL's error if the
   extension is not available (contrib not installed) or cannot be created (insufficient privilege).
-* Verify a server end-to-end with `scripts\test-postgres.ps1` (see the main README, Tests).
+* Verify a server end-to-end by running the API tests against it (see the main README, Tests).
 * `init/` is mounted into the Docker container and creates the `ats_test` database used by the
   API tests on first start.
 

@@ -40,7 +40,7 @@ backups and the report logo. There is no default database. The API refuses to st
 production secrets and cookies, Entra ID settings, sign-in methods, or a missing SQLite file.
 
 Profiles: `.env.example` (PostgreSQL) and `.env.sqlite.example` (local SQLite, selected with
-`$env:ATS_ENV_FILE = ".env.sqlite"` or `..\scripts\run-local-sqlite.ps1`).
+`$env:ATS_ENV_FILE = ".env.sqlite"`).
 
 ## Run
 
@@ -145,7 +145,6 @@ a placeholder `@imported.example.com` address and no usable password.
 cd backend-dotnet
 dotnet build ATS.sln          # warnings are errors
 dotnet test ATS.sln
-..\scripts\test-postgres.ps1 -DatabaseUrl "postgresql://ats:<password>@localhost:5432/ats_test"   # with PostgreSQL
 ```
 
 The tests never read a developer env file (`ATS_ENV_FILE` points at an empty file during the run) and use
@@ -163,5 +162,4 @@ suite to these tests.
 
 **Deployment check:** `tools/cutover_check.py` (standard library Python) signs in with a real account (the password is
 asked for, never shown), reads the main endpoints for that role and signs out; `--compare <url>` also diffs every read
-against a second deployment on the same database. `..\scripts\smoke_test.py` runs the end-to-end checks on seeded
-demo data through the frontend.
+against a second deployment on the same database.

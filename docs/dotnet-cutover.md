@@ -14,8 +14,8 @@ Do the steps in order. Steps 3 and 5 touch the production database, and each nee
 
 ## 1. Before the day
 
-- [ ] Branch `feature/dotnet-backend` is reviewed and merged, with both pipelines green: `azure-pipelines.yml` and
-      `.github/workflows/ci.yml`. The jobs cover the .NET tests on PostgreSQL 16, the container image, the Python
+- [ ] Branch `feature/dotnet-backend` is reviewed and merged, with the pipeline green (`azure-pipelines.yml`; the
+      GitHub workflow has since been removed). The jobs cover the .NET tests on PostgreSQL 16, the container image, the Python
       backend and the frontend.
 - [ ] The Python backend runs the commit that makes Alembic ignore `__EFMigrationsHistory` (`backend/alembic/env.py`).
       Without it, `alembic check` reports that table as drift after step 5.
