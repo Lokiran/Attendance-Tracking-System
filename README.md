@@ -83,7 +83,6 @@ ATS/
 │       ├── lib/            API client, queries, types, formatting, dates
 │       ├── auth/  hooks/   Sign-in state, URL filter state
 │       └── test/           Vitest suite
-├── samples/            Example import files (also used by the API tests)
 ├── azure-pipelines.yml CI for Azure DevOps (API tests on PostgreSQL 16, container image, frontend)
 ├── docker-compose.yml  Optional PostgreSQL
 ├── .env.example        Variables for docker compose
@@ -276,7 +275,7 @@ weekly progress ("2 of 3 days") and policy compliance are computed from those da
   swipe rows; office Wi-Fi. A timesheet with only ID and date is a presence list: every listed day is Office.
 * **Pages:** *Office days* (everyone), *Team office days* (managers), *Org office days* and *Import timesheets*
   (admin, with Excel export and day overrides).
-* **Imports:** Excel, CSV or PDF with a preview first; examples are in `samples/`. Accepted header names and
+* **Imports:** Excel, CSV or PDF with a preview first. Accepted header names and
   values are in `backend-dotnet/config/wfo_mapping.json`.
 * **Policy:** 3 office days a week, 12 a month, at least 4 h in the office for a day to count (editable).
 

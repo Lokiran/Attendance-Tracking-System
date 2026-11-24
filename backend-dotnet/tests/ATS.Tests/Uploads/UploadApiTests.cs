@@ -54,19 +54,6 @@ public sealed class UploadApiTests : IDisposable
 
     public void Dispose() => _host.Dispose();
 
-    private static string RepoFile(params string[] parts)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "samples")))
-        {
-            dir = dir.Parent;
-        }
-
-        return Path.Combine([dir!.FullName, .. parts]);
-    }
-
-    private static byte[] Sample(string name) => File.ReadAllBytes(RepoFile("samples", name));
-
     private static byte[] Fixture(string name) => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "uploads", name));
 
     private static async Task<JsonElement> Json(HttpResponseMessage r)
@@ -217,7 +204,7 @@ public sealed class UploadApiTests : IDisposable
     public async Task Sample_csv_preview_counts_office_wfh_and_conflicts()
     {
         var csrf = await Admin();
-        var (status, body) = await Upload(csrf, "wfo_attendance_sample.csv", Sample("wfo_attendance_sample.csv"));
+        var (status, body) = await Upload(csrf, "wfo_attendance_sample.csv", Fixture("wfo_attendance_sample.csv"));
         status.Should().Be(HttpStatusCode.Created, body.ToString());
         var s = body.GetProperty("summary");
         (S(body, "status"), I(body, "row_count"), I(body, "error_count")).Should().Be(("PREVIEW", 182, 0));
@@ -237,7 +224,7 @@ public sealed class UploadApiTests : IDisposable
     public async Task Commit_applies_and_classifies()
     {
         var csrf = await Admin();
-        var (_, up) = await Upload(csrf, "s.csv", Sample("wfo_attendance_sample.csv"));
+        var (_, up) = await Upload(csrf, "s.csv", Fixture("wfo_attendance_sample.csv"));
         var (status, body) = await Commit(csrf, I(up, "id"));
         (status, S(body, "status"), I(body.GetProperty("commit_summary"), "applied_days")).Should().Be((HttpStatusCode.OK, "COMMITTED", 180));
         Count(db => db.AttendanceDaily).Should().Be(180);
@@ -264,7 +251,7 @@ public sealed class UploadApiTests : IDisposable
     public async Task Reupload_upserts_and_respects_manual_overrides()
     {
         var csrf = await Admin();
-        var content = Sample("wfo_attendance_sample.csv");
+        var content = Fixture("wfo_attendance_sample.csv");
         await Commit(csrf, I((await Upload(csrf, "s.csv", content)).Body, "id"));
         var emp2 = _people["EMP002"];
         (await Send(HttpMethod.Put, $"/api/admin/attendance/{emp2.Id}/2026-10-06/work-mode", csrf, new { work_mode = "WFH" })).Status
@@ -290,11 +277,11 @@ public sealed class UploadApiTests : IDisposable
     public async Task Badge_excel_turns_wfh_days_into_office_with_conflicts()
     {
         var csrf = await Admin();
-        await Commit(csrf, I((await Upload(csrf, "s.csv", Sample("wfo_attendance_sample.csv"))).Body, "id"));
+        await Commit(csrf, I((await Upload(csrf, "s.csv", Fixture("wfo_attendance_sample.csv"))).Body, "id"));
         var emp5 = _people["EMP005"];
         I((await WfoMonth(emp5.Id)).GetProperty("summary"), "wfo_days").Should().Be(4);
 
-        var (status, badge) = await Upload(csrf, "wfo_badge_sample.xlsx", Sample("wfo_badge_sample.xlsx"), Xlsx);
+        var (status, badge) = await Upload(csrf, "wfo_badge_sample.xlsx", Fixture("wfo_badge_sample.xlsx"), Xlsx);
         status.Should().Be(HttpStatusCode.Created, badge.ToString());
         I(badge, "error_count").Should().Be(0);
         I(badge.GetProperty("summary"), "badge_rows").Should().Be(I(badge, "row_count"));
